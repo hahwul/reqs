@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use futures::stream::{self, StreamExt};
-use reqwest::{Client, redirect::Policy};
+use reqwest::{Client, redirect::Policy, header::{HeaderMap, HeaderName, HeaderValue}};
 use std::io::{self, BufRead};
 use std::time::Duration;
 use tokio::task;
@@ -49,6 +49,10 @@ struct Cli {
     /// Use HTTP/2 for requests.
     #[arg(long)]
     http2: bool,
+
+    /// Custom headers to add to the request (e.g., "User-Agent: my-app").
+    #[arg(short = 'H', long)]
+    headers: Vec<String>,
 }
 
 #[tokio::main]
@@ -61,9 +65,27 @@ async fn main() -> Result<()> {
         Policy::none()
     };
 
+    let mut default_headers = HeaderMap::new();
+    for header_str in &cli.headers {
+        if let Some((key, value)) = header_str.split_once(": ") {
+            if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
+                if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
+                    default_headers.insert(header_name, header_value);
+                } else {
+                    eprintln!("[Warning] Invalid header value for key '{}'", key);
+                }
+            } else {
+                eprintln!("[Warning] Invalid header name: {}", key);
+            }
+        } else {
+            eprintln!("[Warning] Invalid header format. Expected 'Key: Value'. Got: {}", header_str);
+        }
+    }
+
     let mut client_builder = Client::builder()
         .timeout(Duration::from_secs(cli.timeout))
-        .redirect(redirect_policy);
+        .redirect(redirect_policy)
+        .default_headers(default_headers);
 
     if !cli.http2 {
         client_builder = client_builder.http1_only();
@@ -144,9 +166,31 @@ async fn main() -> Result<()> {
                                 let version = if cli.http2 { "HTTP/2.0" } else { "HTTP/1.1" };
                                 let mut raw_req = format!("{} {} {}\n", method, path_and_query, version);
                                 raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
+
+                                // Create a temporary HeaderMap for display to handle overrides correctly
+                                let mut display_headers = HeaderMap::new();
+
+                                // Add headers from the request itself (e.g. Accept, Content-Type set by reqwest)
                                 for (name, value) in req.headers() {
+                                    display_headers.insert(name.clone(), value.clone());
+                                }
+
+                                // Add/overwrite with custom headers from the CLI for display
+                                for header_str in &cli.headers {
+                                    if let Some((key, value)) = header_str.split_once(": ") {
+                                        if let Ok(name) = HeaderName::from_bytes(key.as_bytes()) {
+                                            if let Ok(val) = HeaderValue::from_str(value.trim()) {
+                                                display_headers.insert(name, val);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Now print the combined headers
+                                for (name, value) in &display_headers {
                                     raw_req.push_str(&format!("{}: {}\n", name, value.to_str().unwrap_or("[unprintable]")));
                                 }
+
                                 if let Some(body) = req.body().and_then(|b| b.as_bytes()) {
                                     if !body.is_empty() {
                                         raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(body)));
