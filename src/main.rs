@@ -1,4 +1,5 @@
 use anyhow::Result;
+use colored::*;
 use clap::Parser;
 use futures::stream::{self, StreamExt};
 use reqwest::{Client, redirect::Policy, header::{HeaderMap, HeaderName, HeaderValue}};
@@ -212,8 +213,28 @@ async fn main() -> Result<()> {
                             let status = resp.status();
                             let size = resp.content_length().unwrap_or(0);
                             let mut output_str = String::new();
-                            
-                            output_str.push_str(&format!("[{}] - Status: {}, Size: {}\n", url_str, status, size));
+
+                            if cli.output.is_none() {
+                                let status_str = status.to_string();
+                                let colored_status = if status.is_success() {
+                                    status_str.green()
+                                } else if status.is_redirection() {
+                                    status_str.yellow()
+                                } else {
+                                    status_str.red()
+                                };
+                                output_str.push_str(&format!("[{}] -> {} | Size: {}\n",
+                                    url_str.cyan(),
+                                    colored_status,
+                                    size.to_string().blue()
+                                ));
+                            } else {
+                                output_str.push_str(&format!("[{}] -> {} | Size: {}\n",
+                                    url_str,
+                                    status,
+                                    size
+                                ));
+                            }
 
                             if let Some(raw_req) = req_for_display {
                                 output_str.push_str(&format!("[Raw Request]\n{}\n", raw_req));
