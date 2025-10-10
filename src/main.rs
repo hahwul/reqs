@@ -14,45 +14,48 @@ use tokio::sync::Mutex;
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    // NETWORK
     /// Timeout for each request in seconds.
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 10, help_heading = "NETWORK")]
     timeout: u64,
 
     /// Number of retries for failed requests.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, help_heading = "NETWORK")]
     retry: u32,
 
     /// Delay between retries in milliseconds.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, help_heading = "NETWORK")]
     delay: u64,
 
     /// Maximum number of concurrent requests (0 for unlimited).
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, help_heading = "NETWORK")]
     concurrency: usize,
 
+    // HTTP
     /// Whether to follow HTTP redirects.
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, help_heading = "HTTP")]
     follow_redirect: bool,
 
-    /// Output file to save results (instead of stdout).
-    #[arg(short, long)]
-    output: Option<String>,
-
-    /// Include request details in the output.
-    #[arg(long)]
-    include_req: bool,
-
-    /// Include response body in the output.
-    #[arg(long)]
-    include_res: bool,
-
     /// Use HTTP/2 for requests.
-    #[arg(long)]
+    #[arg(long, help_heading = "HTTP")]
     http2: bool,
 
     /// Custom headers to add to the request (e.g., "User-Agent: my-app").
-    #[arg(short = 'H', long)]
+    #[arg(short = 'H', long, help_heading = "HTTP")]
     headers: Vec<String>,
+
+    // OUTPUT
+    /// Output file to save results (instead of stdout).
+    #[arg(short, long, help_heading = "OUTPUT")]
+    output: Option<String>,
+
+    /// Include request details in the output.
+    #[arg(long, help_heading = "OUTPUT")]
+    include_req: bool,
+
+    /// Include response body in the output.
+    #[arg(long, help_heading = "OUTPUT")]
+    include_res: bool,
 }
 
 #[tokio::main]
