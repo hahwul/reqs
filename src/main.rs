@@ -92,6 +92,23 @@ async fn main() -> Result<()> {
                     return;
                 }
 
+                let parts: Vec<&str> = url.trim().split_whitespace().collect();
+                
+                let (method, url_str, body): (String, String, Option<String>) = if parts.is_empty() {
+                    return;
+                } else if parts.len() > 1 && ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH", "OPTIONS"].contains(&parts[0].to_uppercase().as_str()) {
+                    let method = parts[0].to_uppercase();
+                    let url = parts[1].to_string();
+                    let body = if parts.len() > 2 {
+                        Some(parts[2..].join(" ").to_string())
+                    } else {
+                        None
+                    };
+                    (method, url, body)
+                } else {
+                    ("GET".to_string(), url, None) // url is the original String
+                };
+
                 let mut attempts = 0;
                 let mut last_error = None;
 
@@ -100,10 +117,22 @@ async fn main() -> Result<()> {
                         tokio::time::sleep(Duration::from_millis(cli.delay)).await;
                     }
 
-                    let request_builder = client.get(&url);
+                    let mut request_builder = match method.as_str() {
+                        "POST" => client.post(&url_str),
+                        "PUT" => client.put(&url_str),
+                        "DELETE" => client.delete(&url_str),
+                        "HEAD" => client.head(&url_str),
+                        "PATCH" => client.patch(&url_str),
+                        "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url_str),
+                        _ => client.get(&url_str),
+                    };
+
+                    if let Some(body_content) = &body {
+                        request_builder = request_builder.body(body_content.clone());
+                    }
                     
                     let req_for_display = if cli.include_req {
-                        match request_builder.try_clone().unwrap().build() { // try_clone the builder
+                        match request_builder.try_clone().unwrap().build() {
                             Ok(req) => {
                                 let method = req.method();
                                 let url = req.url();
@@ -117,6 +146,11 @@ async fn main() -> Result<()> {
                                 raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
                                 for (name, value) in req.headers() {
                                     raw_req.push_str(&format!("{}: {}\n", name, value.to_str().unwrap_or("[unprintable]")));
+                                }
+                                if let Some(body) = req.body().and_then(|b| b.as_bytes()) {
+                                    if !body.is_empty() {
+                                        raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(body)));
+                                    }
                                 }
                                 Some(raw_req)
                             },
@@ -132,7 +166,7 @@ async fn main() -> Result<()> {
                             let size = resp.content_length().unwrap_or(0);
                             let mut output_str = String::new();
                             
-                            output_str.push_str(&format!("[{}] - Status: {}, Size: {}\n", url, status, size));
+                            output_str.push_str(&format!("[{}] - Status: {}, Size: {}\n", url_str, status, size));
 
                             if let Some(raw_req) = req_for_display {
                                 output_str.push_str(&format!("[Raw Request]\n{}\n", raw_req));
@@ -158,14 +192,14 @@ async fn main() -> Result<()> {
                             last_error = Some(err);
                             attempts += 1;
                             if attempts <= cli.retry {
-                                eprintln!("[{}] - Attempt {} failed: {}. Retrying...", url, attempts, last_error.as_ref().unwrap());
+                                eprintln!("[{}] - Attempt {} failed: {}. Retrying...", url_str, attempts, last_error.as_ref().unwrap());
                             }
                         }
                     }
                 }
 
                 if let Some(err) = last_error {
-                    eprintln!("[{}] - Error after {} attempts: {}", url, cli.retry + 1, err);
+                    eprintln!("[{}] - Error after {} attempts: {}", url_str, cli.retry + 1, err);
                 }
             })
         })
