@@ -57,6 +57,10 @@ struct Cli {
     /// Include response body in the output.
     #[arg(long, help_heading = "OUTPUT")]
     include_res: bool,
+
+    /// Disable color output.
+    #[arg(long, help_heading = "OUTPUT")]
+    no_color: bool,
 }
 
 #[tokio::main]
@@ -214,7 +218,7 @@ async fn main() -> Result<()> {
                             let size = resp.content_length().unwrap_or(0);
                             let mut output_str = String::new();
 
-                            if cli.output.is_none() {
+                            if cli.output.is_none() && !cli.no_color {
                                 let status_str = status.to_string();
                                 let colored_status = if status.is_success() {
                                     status_str.green()
@@ -223,13 +227,15 @@ async fn main() -> Result<()> {
                                 } else {
                                     status_str.red()
                                 };
-                                output_str.push_str(&format!("[{}] -> {} | Size: {}\n",
+                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {}\n",
+                                    method.yellow(),
                                     url_str.cyan(),
                                     colored_status,
                                     size.to_string().blue()
                                 ));
                             } else {
-                                output_str.push_str(&format!("[{}] -> {} | Size: {}\n",
+                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {}\n",
+                                    method,
                                     url_str,
                                     status,
                                     size
