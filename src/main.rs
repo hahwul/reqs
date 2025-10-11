@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use tokio::task;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::fs::File;
+use rand::Rng;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -47,6 +48,14 @@ struct Cli {
     /// Verify SSL certificates (default: false, insecure).
     #[arg(long, default_value_t = false, help_heading = "NETWORK")]
     verify_ssl: bool,
+
+    /// Limit requests per second. E.g., --rate-limit 100.
+    #[arg(long, help_heading = "NETWORK")]
+    rate_limit: Option<u64>,
+
+    /// Random delay between requests in milliseconds. E.g., --random-delay 100:500.
+    #[arg(long, help_heading = "NETWORK")]
+    random_delay: Option<String>,
 
     // HTTP
     /// Whether to follow HTTP redirects.
@@ -162,6 +171,8 @@ async fn main() -> Result<()> {
 
     let client = client_builder.build()?;
 
+    let last_request_time = Arc::new(Mutex::new(Instant::now()));
+
     let output_writer: Option<Arc<Mutex<BufWriter<File>>>> = if let Some(output_path) = &cli.output {
         let file = File::create(output_path).await?;
         Some(Arc::new(Mutex::new(BufWriter::new(file))))
@@ -178,9 +189,42 @@ async fn main() -> Result<()> {
             let client = client.clone();
             let cli = cli.clone(); // Clone cli for each task
             let output_writer = output_writer.clone(); // Clone output_writer for each task
+            let last_request_time = last_request_time.clone(); // Clone for rate limiting
             task::spawn(async move {
                 if url.trim().is_empty() {
                     return;
+                }
+
+                if let Some(random_delay_str) = &cli.random_delay {
+                    let parts: Vec<&str> = random_delay_str.split(':').collect();
+                    if parts.len() == 2 {
+                        if let (Ok(min_delay), Ok(max_delay)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
+                            if max_delay >= min_delay {
+                                let delay = {
+                                    let mut rng = rand::thread_rng();
+                                    rng.gen_range(min_delay..=max_delay)
+                                };
+                                tokio::time::sleep(Duration::from_millis(delay)).await;
+                            } else {
+                                eprintln!("[Warning] Invalid --random-delay format: MAX must be greater than or equal to MIN. Got: {}", random_delay_str);
+                            }
+                        } else {
+                            eprintln!("[Warning] Invalid --random-delay format: Could not parse min/max values. Got: {}", random_delay_str);
+                        }
+                    } else {
+                        eprintln!("[Warning] Invalid --random-delay format. Expected MIN:MAX. Got: {}", random_delay_str);
+                    }
+                }
+
+                if let Some(rate_limit) = cli.rate_limit {
+                    let mut last_req_guard = last_request_time.lock().await;
+                    let elapsed = last_req_guard.elapsed();
+                    let min_delay_micros = 1_000_000 / rate_limit; // microseconds per request
+                    if elapsed.as_micros() < min_delay_micros as u128 {
+                        let sleep_duration = Duration::from_micros(min_delay_micros - elapsed.as_micros() as u64);
+                        tokio::time::sleep(sleep_duration).await;
+                    }
+                    *last_req_guard = Instant::now();
                 }
 
                 let parts: Vec<&str> = url.trim().split_whitespace().collect();
