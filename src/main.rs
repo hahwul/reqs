@@ -3,6 +3,7 @@ use colored::*;
 use clap::Parser;
 use futures::stream::{self, StreamExt};
 use reqwest::{Client, redirect::Policy, header::{HeaderMap, HeaderName, HeaderValue}};
+use scraper::{Html, Selector};
 use serde_json::json;
 use std::io::{self, BufRead};
 use std::time::{Duration, Instant};
@@ -31,6 +32,7 @@ enum OutputFormat {
     #[default]
     Plain,
     Jsonl,
+    Csv,
 }
 
 /// A simple and fast command-line tool to test URLs from a pipeline.
@@ -96,7 +98,7 @@ struct Cli {
         short = 'S',
         long,
         help_heading = "OUTPUT",
-        long_help = "Custom format string for plain output (e.g. \"%method %url -> %code\").\nPlaceholders: %method, %url, %status, %code, %size, %time"
+        long_help = "Custom format string for plain output (e.g. \"%method %url -> %code\").\nPlaceholders: %method, %url, %status, %code, %size, %time, %ip, %title"
     )]
     strf: Option<String>,
 
@@ -107,6 +109,10 @@ struct Cli {
     /// Include response body in the output.
     #[arg(long, help_heading = "OUTPUT")]
     include_res: bool,
+
+    /// Include title from response body in the output.
+    #[arg(long, help_heading = "OUTPUT")]
+    include_title: bool,
 
     /// Disable color output.
     #[arg(long, help_heading = "OUTPUT")]
@@ -190,7 +196,8 @@ async fn main() -> Result<()> {
                 } else {
                     eprintln!("[Warning] Invalid header value for key '{}'", key);
                 }
-            } else {
+            }
+            else {
                 eprintln!("[Warning] Invalid header name: {}", key);
             }
         } else {
@@ -228,6 +235,8 @@ async fn main() -> Result<()> {
         None
     };
 
+    let csv_header_written = Arc::new(Mutex::new(false));
+
     let stdin = io::stdin();
     let handles = stdin
         .lock()
@@ -239,6 +248,7 @@ async fn main() -> Result<()> {
             let output_writer = output_writer.clone(); // Clone output_writer for each task
             let last_request_time = last_request_time.clone(); // Clone for rate limiting
             let parsed_filter_regex = parsed_filter_regex.clone(); // Clone for regex filtering
+            let csv_header_written = csv_header_written.clone();
             task::spawn(async move {
                 if url.trim().is_empty() {
                     return;
@@ -374,9 +384,22 @@ async fn main() -> Result<()> {
                             let elapsed = start_time.elapsed();
                             let status = resp.status();
                             let size = resp.content_length().unwrap_or(0);
+                            let ip_addr = resp.remote_addr().map(|s| s.ip().to_string()).unwrap_or_default();
                             
-                            let body_text = if cli.include_res || cli.filter_string.is_some() || cli.filter_regex.is_some() {
+                            let body_text = if cli.include_res || cli.filter_string.is_some() || cli.filter_regex.is_some() || cli.include_title {
                                 Some(resp.text().await.unwrap_or_default())
+                            } else {
+                                None
+                            };
+
+                            let title = if cli.include_title {
+                                if let Some(body) = &body_text {
+                                    let document = Html::parse_document(body);
+                                    let selector = Selector::parse("title").unwrap();
+                                    document.select(&selector).next().map(|t| t.inner_html())
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             };
@@ -420,6 +443,27 @@ async fn main() -> Result<()> {
                                 return; // Skip output if it doesn't pass filters
                             }
 
+                            if let OutputFormat::Csv = cli.format {
+                                let mut header_written = csv_header_written.lock().await;
+                                if !*header_written {
+                                    let mut csv_header = "method,url,ip_address,status_code,content_length,response_time_ms".to_string();
+                                    if cli.include_title {
+                                        csv_header.push_str(",title");
+                                    }
+                                    csv_header.push('\n');
+
+                                    if let Some(writer) = &output_writer {
+                                        let mut writer = writer.lock().await;
+                                        if let Err(e) = writer.write_all(csv_header.as_bytes()).await {
+                                            eprintln!("Error writing to output file: {}", e);
+                                        }
+                                    } else {
+                                        print!("{}", csv_header);
+                                    }
+                                    *header_written = true;
+                                }
+                            }
+
                             let output_str = match cli.format {
                                 OutputFormat::Plain => {
                                     let mut s = String::new();
@@ -431,9 +475,17 @@ async fn main() -> Result<()> {
                                             .replace("%status", &status.to_string())
                                             .replace("%code", &status.as_u16().to_string())
                                             .replace("%size", &size.to_string())
-                                            .replace("%time", &time_str);
+                                            .replace("%time", &time_str)
+                                            .replace("%ip", &ip_addr)
+                                            .replace("%title", &title.clone().unwrap_or_default());
                                         s.push('\n');
                                     } else {
+                                        let title_str = if let Some(t) = &title {
+                                            format!(" | Title: {}", t.blue())
+                                        } else {
+                                            "".to_string()
+                                        };
+
                                         if cli.output.is_none() && !cli.no_color {
                                             let status_str = status.to_string();
                                             let colored_status = if status.is_success() {
@@ -443,19 +495,23 @@ async fn main() -> Result<()> {
                                             } else {
                                                 status_str.red()
                                             };
-                                            s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
                                                 method.yellow(),
                                                 url_str.cyan(),
+                                                ip_addr.magenta(),
                                                 colored_status,
                                                 size.to_string().blue(),
+                                                title_str,
                                                 elapsed
                                             ));
                                         } else {
-                                            s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
                                                 method,
                                                 url_str,
+                                                ip_addr,
                                                 status,
                                                 size,
+                                                title_str,
                                                 elapsed
                                             ));
                                         }
@@ -463,8 +519,10 @@ async fn main() -> Result<()> {
                                     if let Some(raw_req) = req_for_display {
                                         s.push_str(&format!("[Raw Request]\n{}\n", raw_req));
                                     }
-                                    if let Some(body) = body_text {
-                                        s.push_str(&format!("[Response Body]\n{}\n", body));
+                                    if cli.include_res {
+                                        if let Some(body) = body_text {
+                                            s.push_str(&format!("[Response Body]\n{}\n", body));
+                                        }
                                     }
                                     s
                                 },
@@ -472,17 +530,39 @@ async fn main() -> Result<()> {
                                     let mut json_output = json!({
                                         "method": method,
                                         "url": url_str,
+                                        "ip_address": ip_addr,
                                         "status_code": status.as_u16(),
                                         "content_length": size,
                                         "response_time_ms": elapsed.as_millis(),
                                     });
+                                    if let Some(t) = title {
+                                        json_output["title"] = t.into();
+                                    }
                                     if let Some(req) = req_for_display {
                                         json_output["raw_request"] = req.into();
                                     }
-                                    if let Some(body) = body_text {
-                                        json_output["response_body"] = body.into();
+                                    if cli.include_res {
+                                        if let Some(body) = body_text {
+                                            json_output["response_body"] = body.into();
+                                        }
                                     }
                                     serde_json::to_string(&json_output).unwrap_or_default() + "\n"
+                                },
+                                OutputFormat::Csv => {
+                                    let time_str = format!("{:?}", elapsed);
+                                    let mut csv_line = format!("\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"",
+                                        method,
+                                        url_str,
+                                        ip_addr,
+                                        status.as_u16(),
+                                        size,
+                                        time_str
+                                    );
+                                    if cli.include_title {
+                                        csv_line.push_str(&format!(",\"{}\"", title.unwrap_or_default()));
+                                    }
+                                    csv_line.push('\n');
+                                    csv_line
                                 }
                             };
 
