@@ -85,7 +85,7 @@ struct Cli {
         short = 'S',
         long,
         help_heading = "OUTPUT",
-        long_help = "Custom format string for plain output (e.g. \"%method %url -> %code\").\nPlaceholders: %method, %url, %status, %code, %size, %time"
+        long_help = "Custom format string for plain output (e.g. \"%method %url -> %code\").\nPlaceholders: %method, %url, %status, %code, %size, %time, %ip"
     )]
     strf: Option<String>,
 
@@ -356,6 +356,7 @@ async fn main() -> Result<()> {
                             let elapsed = start_time.elapsed();
                             let status = resp.status();
                             let size = resp.content_length().unwrap_or(0);
+                            let ip_addr = resp.remote_addr().map(|s| s.ip().to_string()).unwrap_or_default();
                             
                             let body_text = if cli.include_res || cli.filter_string.is_some() || cli.filter_regex.is_some() {
                                 Some(resp.text().await.unwrap_or_default())
@@ -405,7 +406,7 @@ async fn main() -> Result<()> {
                             if let OutputFormat::Csv = cli.format {
                                 let mut header_written = csv_header_written.lock().await;
                                 if !*header_written {
-                                    let csv_header = "method,url,status_code,content_length,response_time_ms\n".to_string();
+                                    let csv_header = "method,url,ip_address,status_code,content_length,response_time_ms\n".to_string();
                                     if let Some(writer) = &output_writer {
                                         let mut writer = writer.lock().await;
                                         if let Err(e) = writer.write_all(csv_header.as_bytes()).await {
@@ -429,7 +430,8 @@ async fn main() -> Result<()> {
                                             .replace("%status", &status.to_string())
                                             .replace("%code", &status.as_u16().to_string())
                                             .replace("%size", &size.to_string())
-                                            .replace("%time", &time_str);
+                                            .replace("%time", &time_str)
+                                            .replace("%ip", &ip_addr);
                                         s.push('\n');
                                     } else {
                                         if cli.output.is_none() && !cli.no_color {
@@ -441,17 +443,19 @@ async fn main() -> Result<()> {
                                             } else {
                                                 status_str.red()
                                             };
-                                            s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {} | Time: {:?}\n",
                                                 method.yellow(),
                                                 url_str.cyan(),
+                                                ip_addr.magenta(),
                                                 colored_status,
                                                 size.to_string().blue(),
                                                 elapsed
                                             ));
                                         } else {
-                                            s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {} | Time: {:?}\n",
                                                 method,
                                                 url_str,
+                                                ip_addr,
                                                 status,
                                                 size,
                                                 elapsed
@@ -470,6 +474,7 @@ async fn main() -> Result<()> {
                                     let mut json_output = json!({
                                         "method": method,
                                         "url": url_str,
+                                        "ip_address": ip_addr,
                                         "status_code": status.as_u16(),
                                         "content_length": size,
                                         "response_time_ms": elapsed.as_millis(),
@@ -484,9 +489,10 @@ async fn main() -> Result<()> {
                                 },
                                 OutputFormat::Csv => {
                                     let time_str = format!("{:?}", elapsed);
-                                    format!("\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                                    format!("\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
                                         method,
                                         url_str,
+                                        ip_addr,
                                         status.as_u16(),
                                         size,
                                         time_str
