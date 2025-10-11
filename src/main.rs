@@ -62,6 +62,11 @@ struct Cli {
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Plain, help_heading = "OUTPUT")]
     format: OutputFormat,
 
+    /// Custom format string for plain output (e.g. "%method %url -> %code").
+    /// Placeholders: %method, %url, %status, %code, %size, %time
+    #[arg(short = 'S', long, help_heading = "OUTPUT")]
+    strf: Option<String>,
+
     /// Include request details in the output.
     #[arg(long, help_heading = "OUTPUT")]
     include_req: bool,
@@ -265,30 +270,42 @@ async fn main() -> Result<()> {
                             let output_str = match cli.format {
                                 OutputFormat::Plain => {
                                     let mut s = String::new();
-                                    if cli.output.is_none() && !cli.no_color {
-                                        let status_str = status.to_string();
-                                        let colored_status = if status.is_success() {
-                                            status_str.green()
-                                        } else if status.is_redirection() {
-                                            status_str.yellow()
-                                        } else {
-                                            status_str.red()
-                                        };
-                                        s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
-                                            method.yellow(),
-                                            url_str.cyan(),
-                                            colored_status,
-                                            size.to_string().blue(),
-                                            elapsed
-                                        ));
+                                    if let Some(template) = &cli.strf {
+                                        let time_str = format!("{:?}", elapsed);
+                                        s = template
+                                            .replace("%method", &method)
+                                            .replace("%url", &url_str)
+                                            .replace("%status", &status.to_string())
+                                            .replace("%code", &status.as_u16().to_string())
+                                            .replace("%size", &size.to_string())
+                                            .replace("%time", &time_str);
+                                        s.push('\n');
                                     } else {
-                                        s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
-                                            method,
-                                            url_str,
-                                            status,
-                                            size,
-                                            elapsed
-                                        ));
+                                        if cli.output.is_none() && !cli.no_color {
+                                            let status_str = status.to_string();
+                                            let colored_status = if status.is_success() {
+                                                status_str.green()
+                                            } else if status.is_redirection() {
+                                                status_str.yellow()
+                                            } else {
+                                                status_str.red()
+                                            };
+                                            s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                                method.yellow(),
+                                                url_str.cyan(),
+                                                colored_status,
+                                                size.to_string().blue(),
+                                                elapsed
+                                            ));
+                                        } else {
+                                            s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                                method,
+                                                url_str,
+                                                status,
+                                                size,
+                                                elapsed
+                                            ));
+                                        }
                                     }
                                     if let Some(raw_req) = req_for_display {
                                         s.push_str(&format!("[Raw Request]\n{}\n", raw_req));
