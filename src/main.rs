@@ -19,6 +19,7 @@ enum OutputFormat {
     #[default]
     Plain,
     Jsonl,
+    Csv,
 }
 
 /// A simple and fast command-line tool to test URLs from a pipeline.
@@ -206,6 +207,8 @@ async fn main() -> Result<()> {
         None
     };
 
+    let csv_header_written = Arc::new(Mutex::new(false));
+
     let stdin = io::stdin();
     let handles = stdin
         .lock()
@@ -217,6 +220,7 @@ async fn main() -> Result<()> {
             let output_writer = output_writer.clone(); // Clone output_writer for each task
             let last_request_time = last_request_time.clone(); // Clone for rate limiting
             let parsed_filter_regex = parsed_filter_regex.clone(); // Clone for regex filtering
+            let csv_header_written = csv_header_written.clone();
             task::spawn(async move {
                 if url.trim().is_empty() {
                     return;
@@ -398,6 +402,22 @@ async fn main() -> Result<()> {
                                 return; // Skip output if it doesn't pass filters
                             }
 
+                            if let OutputFormat::Csv = cli.format {
+                                let mut header_written = csv_header_written.lock().await;
+                                if !*header_written {
+                                    let csv_header = "method,url,status_code,content_length,response_time_ms\n".to_string();
+                                    if let Some(writer) = &output_writer {
+                                        let mut writer = writer.lock().await;
+                                        if let Err(e) = writer.write_all(csv_header.as_bytes()).await {
+                                            eprintln!("Error writing to output file: {}", e);
+                                        }
+                                    } else {
+                                        print!("{}", csv_header);
+                                    }
+                                    *header_written = true;
+                                }
+                            }
+
                             let output_str = match cli.format {
                                 OutputFormat::Plain => {
                                     let mut s = String::new();
@@ -461,6 +481,16 @@ async fn main() -> Result<()> {
                                         json_output["response_body"] = body.into();
                                     }
                                     serde_json::to_string(&json_output).unwrap_or_default() + "\n"
+                                },
+                                OutputFormat::Csv => {
+                                    let time_str = format!("{:?}", elapsed);
+                                    format!("\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                                        method,
+                                        url_str,
+                                        status.as_u16(),
+                                        size,
+                                        time_str
+                                    )
                                 }
                             };
 
