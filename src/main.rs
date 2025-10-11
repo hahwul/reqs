@@ -15,6 +15,18 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use regex::Regex;
 
+// MCP imports (only used when --mcp flag is set)
+use rust_mcp_sdk::mcp_server::{server_runtime, ServerHandler, ServerRuntime};
+use rust_mcp_sdk::McpServer;
+use rust_mcp_sdk::schema::{
+    CallToolRequest, CallToolResult, Implementation, InitializeResult, ListToolsRequest,
+    ListToolsResult, RpcError, ServerCapabilities, ServerCapabilitiesTools, TextContent, Tool,
+    LATEST_PROTOCOL_VERSION,
+};
+use rust_mcp_sdk::schema::schema_utils::CallToolError;
+use rust_mcp_sdk::{StdioTransport, TransportOptions};
+use async_trait::async_trait;
+
 #[derive(clap::ValueEnum, Debug, Clone, Default)]
 enum OutputFormat {
     #[default]
@@ -118,6 +130,11 @@ struct Cli {
     /// Filter by regex in response body.
     #[arg(long, help_heading = "FILTER")]
     filter_regex: Option<String>,
+
+    // MCP
+    /// Run in MCP (Model Context Protocol) server mode.
+    #[arg(long, help_heading = "MCP")]
+    mcp: bool,
 }
 
 fn normalize_url_scheme(url_str: &str) -> String {
@@ -146,6 +163,11 @@ fn normalize_url_scheme(url_str: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // If --mcp flag is set, run in MCP server mode
+    if cli.mcp {
+        return run_mcp_server(cli).await;
+    }
 
     let parsed_filter_regex: Arc<Option<Regex>> = Arc::new(if let Some(regex_str) = &cli.filter_regex {
         match Regex::new(regex_str) {
@@ -590,4 +612,241 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn run_mcp_server(cli: Cli) -> Result<()> {
+    // Define server details and capabilities
+    let server_details = InitializeResult {
+        server_info: Implementation {
+            name: "reqs".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            title: Some("HTTP Request Testing Tool".to_string()),
+        },
+        capabilities: ServerCapabilities {
+            tools: Some(ServerCapabilitiesTools { list_changed: None }),
+            ..Default::default()
+        },
+        meta: None,
+        instructions: Some("Send HTTP requests and return response metadata.".to_string()),
+        protocol_version: LATEST_PROTOCOL_VERSION.to_string(),
+    };
+
+    // Create stdio transport
+    let transport = StdioTransport::new(TransportOptions::default())
+        .map_err(|e| anyhow::anyhow!("Failed to create stdio transport: {}", e))?;
+
+    // Create handler
+    let handler = ReqsServerHandler { cli: cli.clone() };
+
+    // Create and start server
+    let server: Arc<ServerRuntime> = server_runtime::create_server(server_details, transport, handler);
+    server.start().await.map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+
+    Ok(())
+}
+
+// Custom handler for our MCP server
+struct ReqsServerHandler {
+    cli: Cli,
+}
+
+#[async_trait]
+impl ServerHandler for ReqsServerHandler {
+    async fn handle_list_tools_request(
+        &self,
+        _request: ListToolsRequest,
+        _runtime: Arc<dyn McpServer>,
+    ) -> std::result::Result<ListToolsResult, RpcError> {
+        use std::collections::HashMap;
+        
+        // Create input schema properties
+        let mut properties = HashMap::new();
+        let mut requests_prop = serde_json::Map::new();
+        requests_prop.insert("type".to_string(), json!("array"));
+        requests_prop.insert("description".to_string(), json!("List of HTTP requests. Each request can be a simple URL or a string with METHOD URL BODY format (e.g., 'POST https://example.com data=value')"));
+        let mut items = serde_json::Map::new();
+        items.insert("type".to_string(), json!("string"));
+        requests_prop.insert("items".to_string(), json!(items));
+        properties.insert("requests".to_string(), requests_prop);
+
+        let input_schema = rust_mcp_sdk::schema::ToolInputSchema::new(
+            vec!["requests".to_string()],
+            Some(properties),
+        );
+
+        Ok(ListToolsResult {
+            tools: vec![Tool {
+                name: "send_requests".to_string(),
+                description: Some("Send HTTP requests and return response metadata. Accepts a list of requests in the format: URL or 'METHOD URL BODY'".to_string()),
+                input_schema,
+                annotations: None,
+                meta: None,
+                output_schema: None,
+                title: Some("Send HTTP Requests".to_string()),
+            }],
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    async fn handle_call_tool_request(
+        &self,
+        request: CallToolRequest,
+        _runtime: Arc<dyn McpServer>,
+    ) -> std::result::Result<CallToolResult, CallToolError> {
+        if request.tool_name() != "send_requests" {
+            return Err(CallToolError::unknown_tool(format!(
+                "Unknown tool: {}",
+                request.tool_name()
+            )));
+        }
+
+        let requests = request
+            .params
+            .arguments
+            .as_ref()
+            .and_then(|args| args.get("requests"))
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| {
+                CallToolError::new(RpcError::invalid_params().with_message(
+                    "requests parameter must be an array".to_string(),
+                ))
+            })?;
+
+        let mut results = Vec::new();
+
+        // Create HTTP client
+        let redirect_policy = if self.cli.follow_redirect {
+            Policy::limited(10)
+        } else {
+            Policy::none()
+        };
+
+        let mut default_headers = HeaderMap::new();
+        for header_str in &self.cli.headers {
+            if let Some((key, value)) = header_str.split_once(": ") {
+                if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
+                    if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
+                        default_headers.insert(header_name, header_value);
+                    }
+                }
+            }
+        }
+
+        let mut client_builder = Client::builder()
+            .timeout(Duration::from_secs(self.cli.timeout))
+            .redirect(redirect_policy)
+            .default_headers(default_headers);
+
+        if !self.cli.verify_ssl {
+            client_builder = client_builder.danger_accept_invalid_certs(true);
+        }
+
+        if let Some(proxy_url) = &self.cli.proxy {
+            let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| {
+                CallToolError::new(
+                    RpcError::internal_error().with_message(format!("Failed to create proxy: {}", e)),
+                )
+            })?;
+            client_builder = client_builder.proxy(proxy);
+        }
+
+        if !self.cli.http2 {
+            client_builder = client_builder.http1_only();
+        }
+
+        let client = client_builder.build().map_err(|e| {
+            CallToolError::new(
+                RpcError::internal_error()
+                    .with_message(format!("Failed to build HTTP client: {}", e)),
+            )
+        })?;
+
+        // Process each request
+        for req in requests {
+            let req_str = req
+                .as_str()
+                .ok_or_else(|| {
+                    CallToolError::new(
+                        RpcError::invalid_params().with_message("Each request must be a string".to_string()),
+                    )
+                })?
+                .trim();
+
+            if req_str.is_empty() {
+                continue;
+            }
+
+            let parts: Vec<&str> = req_str.split_whitespace().collect();
+
+            let (method, url_str, body): (String, String, Option<String>) = if parts.is_empty() {
+                continue;
+            } else if parts.len() > 1
+                && ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH", "OPTIONS"]
+                    .contains(&parts[0].to_uppercase().as_str())
+            {
+                let method = parts[0].to_uppercase();
+                let url = parts[1].to_string();
+                let body = if parts.len() > 2 {
+                    Some(parts[2..].join(" ").to_string())
+                } else {
+                    None
+                };
+                (method, url, body)
+            } else {
+                ("GET".to_string(), req_str.to_string(), None)
+            };
+
+            let url_str = normalize_url_scheme(&url_str);
+
+            let mut request_builder = match method.as_str() {
+                "POST" => client.post(&url_str),
+                "PUT" => client.put(&url_str),
+                "DELETE" => client.delete(&url_str),
+                "HEAD" => client.head(&url_str),
+                "PATCH" => client.patch(&url_str),
+                "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url_str),
+                _ => client.get(&url_str),
+            };
+
+            if let Some(body_content) = &body {
+                request_builder = request_builder.body(body_content.clone());
+            }
+
+            let start_time = Instant::now();
+            match request_builder.send().await {
+                Ok(resp) => {
+                    let elapsed = start_time.elapsed();
+                    let status = resp.status();
+                    let size = resp.content_length().unwrap_or(0);
+
+                    results.push(json!({
+                        "method": method,
+                        "url": url_str,
+                        "status_code": status.as_u16(),
+                        "content_length": size,
+                        "response_time_ms": elapsed.as_millis(),
+                    }));
+                }
+                Err(err) => {
+                    results.push(json!({
+                        "method": method,
+                        "url": url_str,
+                        "error": err.to_string(),
+                    }));
+                }
+            }
+        }
+
+        // Return results as tool response
+        let result_text = results
+            .iter()
+            .map(|r| serde_json::to_string(r).unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            result_text,
+        )]))
+    }
 }
