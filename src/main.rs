@@ -12,6 +12,7 @@ use tokio::fs::File;
 use rand::Rng;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use regex::Regex;
 
 #[derive(clap::ValueEnum, Debug, Clone, Default)]
 enum OutputFormat {
@@ -98,6 +99,19 @@ struct Cli {
     /// Disable color output.
     #[arg(long, help_heading = "OUTPUT")]
     no_color: bool,
+
+    // FILTER
+    /// Filter by specific HTTP status codes (e.g., "200,404").
+    #[arg(long, value_delimiter = ',', help_heading = "FILTER")]
+    filter_status: Vec<u16>,
+
+    /// Filter by string in response body.
+    #[arg(long, help_heading = "FILTER")]
+    filter_string: Option<String>,
+
+    /// Filter by regex in response body.
+    #[arg(long, help_heading = "FILTER")]
+    filter_regex: Option<String>,
 }
 
 fn normalize_url_scheme(url_str: &str) -> String {
@@ -126,6 +140,18 @@ fn normalize_url_scheme(url_str: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    let parsed_filter_regex: Arc<Option<Regex>> = Arc::new(if let Some(regex_str) = &cli.filter_regex {
+        match Regex::new(regex_str) {
+            Ok(re) => Some(re),
+            Err(e) => {
+                eprintln!("[Warning] Invalid regex provided for --filter-regex: {}. Disabling regex filtering.", e);
+                None
+            }
+        }
+    } else {
+        None
+    });
 
     let redirect_policy = if cli.follow_redirect {
         Policy::limited(10) // Default reqwest behavior for following redirects
@@ -190,6 +216,7 @@ async fn main() -> Result<()> {
             let cli = cli.clone(); // Clone cli for each task
             let output_writer = output_writer.clone(); // Clone output_writer for each task
             let last_request_time = last_request_time.clone(); // Clone for rate limiting
+            let parsed_filter_regex = parsed_filter_regex.clone(); // Clone for regex filtering
             task::spawn(async move {
                 if url.trim().is_empty() {
                     return;
@@ -326,11 +353,50 @@ async fn main() -> Result<()> {
                             let status = resp.status();
                             let size = resp.content_length().unwrap_or(0);
                             
-                            let body_text = if cli.include_res {
+                            let body_text = if cli.include_res || cli.filter_string.is_some() || cli.filter_regex.is_some() {
                                 Some(resp.text().await.unwrap_or_default())
                             } else {
                                 None
                             };
+
+                            let mut should_output = true;
+
+                            // Filter by status codes
+                            if !cli.filter_status.is_empty() && !cli.filter_status.contains(&status.as_u16()) {
+                                should_output = false;
+                            }
+
+                            // Filter by string in response body
+                            if should_output { // Only check if still eligible
+                                if let Some(filter_str) = &cli.filter_string {
+                                    if let Some(body) = &body_text {
+                                        if !body.contains(filter_str) {
+                                            should_output = false;
+                                        }
+                                    } else {
+                                        // If body is not included but filter_string is set, don't output
+                                        should_output = false;
+                                    }
+                                }
+                            }
+
+                            // Filter by regex in response body
+                            if should_output { // Only check if still eligible
+                                if let Some(re) = parsed_filter_regex.as_ref() {
+                                    if let Some(body) = &body_text {
+                                        if !re.is_match(body) {
+                                            should_output = false;
+                                        }
+                                    } else {
+                                        // If body is not included but filter_regex is set, don't output
+                                        should_output = false;
+                                    }
+                                }
+                            }
+
+                            if !should_output {
+                                return; // Skip output if it doesn't pass filters
+                            }
 
                             let output_str = match cli.format {
                                 OutputFormat::Plain => {
