@@ -40,6 +40,14 @@ struct Cli {
     #[arg(long, default_value_t = 0, help_heading = "NETWORK")]
     concurrency: usize,
 
+    /// Use a proxy for requests (e.g., "http://127.0.0.1:8080").
+    #[arg(long, help_heading = "NETWORK")]
+    proxy: Option<String>,
+
+    /// Verify SSL certificates (default: false, insecure).
+    #[arg(long, default_value_t = false, help_heading = "NETWORK")]
+    verify_ssl: bool,
+
     // HTTP
     /// Whether to follow HTTP redirects.
     #[arg(long, default_value_t = true, help_heading = "HTTP")]
@@ -137,6 +145,16 @@ async fn main() -> Result<()> {
         .timeout(Duration::from_secs(cli.timeout))
         .redirect(redirect_policy)
         .default_headers(default_headers);
+
+    // Disable SSL verification by default
+    if !cli.verify_ssl {
+        client_builder = client_builder.danger_accept_invalid_certs(true);
+    }
+
+    if let Some(proxy_url) = &cli.proxy {
+        let proxy = reqwest::Proxy::all(proxy_url)?;
+        client_builder = client_builder.proxy(proxy);
+    }
 
     if !cli.http2 {
         client_builder = client_builder.http1_only();
