@@ -659,7 +659,7 @@ impl ServerHandler for ReqsServerHandler {
     ) -> std::result::Result<ListToolsResult, RpcError> {
         use std::collections::HashMap;
         
-        // Create input schema properties
+        // Create input schema properties for send_requests
         let mut properties = HashMap::new();
         let mut requests_prop = serde_json::Map::new();
         requests_prop.insert("type".to_string(), json!("array"));
@@ -674,16 +674,53 @@ impl ServerHandler for ReqsServerHandler {
             Some(properties),
         );
 
+        // Create input schema properties for fuzz_request
+        let mut fuzz_properties = HashMap::new();
+        
+        let mut raw_request_prop = serde_json::Map::new();
+        raw_request_prop.insert("type".to_string(), json!("string"));
+        raw_request_prop.insert("description".to_string(), json!("HTTP raw request with FUZZ keyword to be replaced. Example: 'GET /a HTTP/1.1\\nHost: www.hahwul.com\\nTest: FUZZ'"));
+        fuzz_properties.insert("raw_request".to_string(), raw_request_prop);
+        
+        let mut wordlist_prop = serde_json::Map::new();
+        wordlist_prop.insert("type".to_string(), json!("array"));
+        wordlist_prop.insert("description".to_string(), json!("List of words to replace the FUZZ keyword with"));
+        let mut wordlist_items = serde_json::Map::new();
+        wordlist_items.insert("type".to_string(), json!("string"));
+        wordlist_prop.insert("items".to_string(), json!(wordlist_items));
+        fuzz_properties.insert("wordlist".to_string(), wordlist_prop);
+        
+        let mut fuzz_key_prop = serde_json::Map::new();
+        fuzz_key_prop.insert("type".to_string(), json!("string"));
+        fuzz_key_prop.insert("description".to_string(), json!("Keyword to replace in raw request (default: FUZZ)"));
+        fuzz_properties.insert("fuzz_key".to_string(), fuzz_key_prop);
+
+        let fuzz_input_schema = rust_mcp_sdk::schema::ToolInputSchema::new(
+            vec!["raw_request".to_string(), "wordlist".to_string()],
+            Some(fuzz_properties),
+        );
+
         Ok(ListToolsResult {
-            tools: vec![Tool {
-                name: "send_requests".to_string(),
-                description: Some("Send HTTP requests and return response metadata. Accepts a list of requests in the format: URL or 'METHOD URL BODY'".to_string()),
-                input_schema,
-                annotations: None,
-                meta: None,
-                output_schema: None,
-                title: Some("Send HTTP Requests".to_string()),
-            }],
+            tools: vec![
+                Tool {
+                    name: "send_requests".to_string(),
+                    description: Some("Send HTTP requests and return response metadata. Accepts a list of requests in the format: URL or 'METHOD URL BODY'".to_string()),
+                    input_schema,
+                    annotations: None,
+                    meta: None,
+                    output_schema: None,
+                    title: Some("Send HTTP Requests".to_string()),
+                },
+                Tool {
+                    name: "fuzz_request".to_string(),
+                    description: Some("Fuzz an HTTP request by replacing a keyword with words from a wordlist. Sends multiple requests with different payloads and returns results.".to_string()),
+                    input_schema: fuzz_input_schema,
+                    annotations: None,
+                    meta: None,
+                    output_schema: None,
+                    title: Some("Fuzz HTTP Request".to_string()),
+                }
+            ],
             meta: None,
             next_cursor: None,
         })
@@ -694,12 +731,22 @@ impl ServerHandler for ReqsServerHandler {
         request: CallToolRequest,
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, CallToolError> {
-        if request.tool_name() != "send_requests" {
-            return Err(CallToolError::unknown_tool(format!(
+        match request.tool_name() {
+            "send_requests" => self.handle_send_requests_impl(request).await,
+            "fuzz_request" => self.handle_fuzz_request_impl(request).await,
+            _ => Err(CallToolError::unknown_tool(format!(
                 "Unknown tool: {}",
                 request.tool_name()
-            )));
+            ))),
         }
+    }
+}
+
+impl ReqsServerHandler {
+    async fn handle_send_requests_impl(
+        &self,
+        request: CallToolRequest,
+    ) -> std::result::Result<CallToolResult, CallToolError> {
 
         let requests = request
             .params
@@ -832,6 +879,234 @@ impl ServerHandler for ReqsServerHandler {
                     results.push(json!({
                         "method": method,
                         "url": url_str,
+                        "error": err.to_string(),
+                    }));
+                }
+            }
+        }
+
+        // Return results as tool response
+        let result_text = results
+            .iter()
+            .map(|r| serde_json::to_string(r).unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            result_text,
+        )]))
+    }
+
+    async fn handle_fuzz_request_impl(
+        &self,
+        request: CallToolRequest,
+    ) -> std::result::Result<CallToolResult, CallToolError> {
+        // Extract parameters
+        let raw_request = request
+            .params
+            .arguments
+            .as_ref()
+            .and_then(|args| args.get("raw_request"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                CallToolError::new(RpcError::invalid_params().with_message(
+                    "raw_request parameter is required and must be a string".to_string(),
+                ))
+            })?;
+
+        let wordlist = request
+            .params
+            .arguments
+            .as_ref()
+            .and_then(|args| args.get("wordlist"))
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| {
+                CallToolError::new(RpcError::invalid_params().with_message(
+                    "wordlist parameter is required and must be an array".to_string(),
+                ))
+            })?;
+
+        let fuzz_key = request
+            .params
+            .arguments
+            .as_ref()
+            .and_then(|args| args.get("fuzz_key"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("FUZZ");
+
+        // Check if FUZZ key exists in raw request
+        if !raw_request.contains(fuzz_key) {
+            return Err(CallToolError::new(RpcError::invalid_params().with_message(
+                format!("raw_request does not contain the fuzz keyword: {}", fuzz_key),
+            )));
+        }
+
+        // Parse raw HTTP request
+        let lines: Vec<&str> = raw_request.lines().collect();
+        if lines.is_empty() {
+            return Err(CallToolError::new(RpcError::invalid_params().with_message(
+                "raw_request is empty".to_string(),
+            )));
+        }
+
+        // Parse request line (e.g., "GET /path HTTP/1.1")
+        let request_line_parts: Vec<&str> = lines[0].split_whitespace().collect();
+        if request_line_parts.len() < 2 {
+            return Err(CallToolError::new(RpcError::invalid_params().with_message(
+                "Invalid HTTP request line format".to_string(),
+            )));
+        }
+
+        let method = request_line_parts[0].to_uppercase();
+        let path = request_line_parts[1];
+
+        // Parse headers and extract Host header
+        let mut headers = HeaderMap::new();
+        let mut host = String::new();
+        let mut body_start = lines.len();
+        
+        for (i, line) in lines.iter().enumerate().skip(1) {
+            if line.trim().is_empty() {
+                body_start = i + 1;
+                break;
+            }
+            
+            if let Some((key, value)) = line.split_once(": ") {
+                let key_trimmed = key.trim();
+                let value_trimmed = value.trim();
+                
+                if key_trimmed.eq_ignore_ascii_case("host") {
+                    host = value_trimmed.to_string();
+                }
+                
+                if let Ok(header_name) = HeaderName::from_bytes(key_trimmed.as_bytes()) {
+                    if let Ok(header_value) = HeaderValue::from_str(value_trimmed) {
+                        headers.insert(header_name, header_value);
+                    }
+                }
+            }
+        }
+
+        // Extract body if present
+        let body = if body_start < lines.len() {
+            Some(lines[body_start..].join("\n"))
+        } else {
+            None
+        };
+
+        if host.is_empty() {
+            return Err(CallToolError::new(RpcError::invalid_params().with_message(
+                "Host header is required in raw_request".to_string(),
+            )));
+        }
+
+        // Build base URL
+        let base_url = if host.contains("://") {
+            format!("{}{}", host, path)
+        } else {
+            format!("https://{}{}", host, path)
+        };
+
+        // Create HTTP client
+        let redirect_policy = if self.cli.follow_redirect {
+            Policy::limited(10)
+        } else {
+            Policy::none()
+        };
+
+        let mut client_builder = Client::builder()
+            .timeout(Duration::from_secs(self.cli.timeout))
+            .redirect(redirect_policy);
+
+        if !self.cli.verify_ssl {
+            client_builder = client_builder.danger_accept_invalid_certs(true);
+        }
+
+        if let Some(proxy_url) = &self.cli.proxy {
+            let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| {
+                CallToolError::new(
+                    RpcError::internal_error().with_message(format!("Failed to create proxy: {}", e)),
+                )
+            })?;
+            client_builder = client_builder.proxy(proxy);
+        }
+
+        if !self.cli.http2 {
+            client_builder = client_builder.http1_only();
+        }
+
+        let client = client_builder.build().map_err(|e| {
+            CallToolError::new(
+                RpcError::internal_error()
+                    .with_message(format!("Failed to build HTTP client: {}", e)),
+            )
+        })?;
+
+        // Process each word in wordlist
+        let mut results = Vec::new();
+        for word_value in wordlist {
+            let word = word_value.as_str().unwrap_or("");
+            
+            // Replace FUZZ keyword with word in URL
+            let fuzzed_url = base_url.replace(fuzz_key, word);
+            
+            // Replace FUZZ keyword in headers
+            let mut fuzzed_headers = HeaderMap::new();
+            for (name, value) in &headers {
+                if let Ok(value_str) = value.to_str() {
+                    let fuzzed_value = value_str.replace(fuzz_key, word);
+                    if let Ok(new_value) = HeaderValue::from_str(&fuzzed_value) {
+                        fuzzed_headers.insert(name.clone(), new_value);
+                    }
+                }
+            }
+            
+            // Replace FUZZ keyword in body
+            let fuzzed_body = body.as_ref().map(|b| b.replace(fuzz_key, word));
+
+            // Build request
+            let mut request_builder = match method.as_str() {
+                "POST" => client.post(&fuzzed_url),
+                "PUT" => client.put(&fuzzed_url),
+                "DELETE" => client.delete(&fuzzed_url),
+                "HEAD" => client.head(&fuzzed_url),
+                "PATCH" => client.patch(&fuzzed_url),
+                "OPTIONS" => client.request(reqwest::Method::OPTIONS, &fuzzed_url),
+                _ => client.get(&fuzzed_url),
+            };
+
+            // Add headers
+            for (name, value) in &fuzzed_headers {
+                request_builder = request_builder.header(name, value);
+            }
+
+            // Add body if present
+            if let Some(body_content) = &fuzzed_body {
+                request_builder = request_builder.body(body_content.clone());
+            }
+
+            // Send request
+            let start_time = Instant::now();
+            match request_builder.send().await {
+                Ok(resp) => {
+                    let elapsed = start_time.elapsed();
+                    let status = resp.status();
+                    let size = resp.content_length().unwrap_or(0);
+
+                    results.push(json!({
+                        "word": word,
+                        "method": method,
+                        "url": fuzzed_url,
+                        "status_code": status.as_u16(),
+                        "content_length": size,
+                        "response_time_ms": elapsed.as_millis(),
+                    }));
+                }
+                Err(err) => {
+                    results.push(json!({
+                        "word": word,
+                        "method": method,
+                        "url": fuzzed_url,
                         "error": err.to_string(),
                     }));
                 }
