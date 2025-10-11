@@ -4,7 +4,7 @@ use clap::Parser;
 use futures::stream::{self, StreamExt};
 use reqwest::{Client, redirect::Policy, header::{HeaderMap, HeaderName, HeaderValue}};
 use std::io::{self, BufRead};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::task;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::fs::File;
@@ -61,6 +61,29 @@ struct Cli {
     /// Disable color output.
     #[arg(long, help_heading = "OUTPUT")]
     no_color: bool,
+}
+
+fn normalize_url_scheme(url_str: &str) -> String {
+    let trimmed_url = url_str.trim();
+    if trimmed_url.starts_with("http://") || trimmed_url.starts_with("https://") {
+        return trimmed_url.to_string();
+    }
+
+    if let Some(pos) = trimmed_url.rfind(':') {
+        if let Some(port_str) = trimmed_url.get(pos + 1..) {
+            // Ensure what follows ':' is a valid port number and not part of the path
+            if !port_str.is_empty() && port_str.chars().all(char::is_numeric) {
+                if port_str == "80" {
+                    return format!("http://{}", trimmed_url);
+                }
+                // For 443 and all other ports, use https.
+                return format!("https://{}", trimmed_url);
+            }
+        }
+    }
+
+    // No port or invalid port format, default to https
+    format!("https://{}", trimmed_url)
 }
 
 #[tokio::main]
@@ -139,6 +162,8 @@ async fn main() -> Result<()> {
                     ("GET".to_string(), url, None) // url is the original String
                 };
 
+                let url_str = normalize_url_scheme(&url_str);
+
                 let mut attempts = 0;
                 let mut last_error = None;
 
@@ -212,8 +237,10 @@ async fn main() -> Result<()> {
                         None
                     };
 
+                    let start_time = Instant::now();
                     match request_builder.send().await {
                         Ok(resp) => {
+                            let elapsed = start_time.elapsed();
                             let status = resp.status();
                             let size = resp.content_length().unwrap_or(0);
                             let mut output_str = String::new();
@@ -227,18 +254,20 @@ async fn main() -> Result<()> {
                                 } else {
                                     status_str.red()
                                 };
-                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {}\n",
+                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
                                     method.yellow(),
                                     url_str.cyan(),
                                     colored_status,
-                                    size.to_string().blue()
+                                    size.to_string().blue(),
+                                    elapsed
                                 ));
                             } else {
-                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {}\n",
+                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
                                     method,
                                     url_str,
                                     status,
-                                    size
+                                    size,
+                                    elapsed
                                 ));
                             }
 
