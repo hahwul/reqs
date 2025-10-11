@@ -62,9 +62,12 @@ struct Cli {
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Plain, help_heading = "OUTPUT")]
     format: OutputFormat,
 
-    /// Custom format string for plain output (e.g. "%method %url -> %code").
-    /// Placeholders: %method, %url, %status, %code, %size, %time
-    #[arg(short = 'S', long, help_heading = "OUTPUT")]
+    #[arg(
+        short = 'S',
+        long,
+        help_heading = "OUTPUT",
+        long_help = "Custom format string for plain output (e.g. \"%method %url -> %code\").\nPlaceholders: %method, %url, %status, %code, %size, %time"
+    )]
     strf: Option<String>,
 
     /// Include request details in the output.
