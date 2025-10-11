@@ -3,6 +3,7 @@ use colored::*;
 use clap::Parser;
 use futures::stream::{self, StreamExt};
 use reqwest::{Client, redirect::Policy, header::{HeaderMap, HeaderName, HeaderValue}};
+use serde_json::json;
 use std::io::{self, BufRead};
 use std::time::{Duration, Instant};
 use tokio::task;
@@ -10,6 +11,13 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::fs::File;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+#[derive(clap::ValueEnum, Debug, Clone, Default)]
+enum OutputFormat {
+    #[default]
+    Plain,
+    Jsonl,
+}
 
 /// A simple and fast command-line tool to test URLs from a pipeline.
 #[derive(Parser, Debug, Clone)]
@@ -49,6 +57,10 @@ struct Cli {
     /// Output file to save results (instead of stdout).
     #[arg(short, long, help_heading = "OUTPUT")]
     output: Option<String>,
+
+    /// Output format.
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Plain, help_heading = "OUTPUT")]
+    format: OutputFormat,
 
     /// Include request details in the output.
     #[arg(long, help_heading = "OUTPUT")]
@@ -243,43 +255,66 @@ async fn main() -> Result<()> {
                             let elapsed = start_time.elapsed();
                             let status = resp.status();
                             let size = resp.content_length().unwrap_or(0);
-                            let mut output_str = String::new();
-
-                            if cli.output.is_none() && !cli.no_color {
-                                let status_str = status.to_string();
-                                let colored_status = if status.is_success() {
-                                    status_str.green()
-                                } else if status.is_redirection() {
-                                    status_str.yellow()
-                                } else {
-                                    status_str.red()
-                                };
-                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
-                                    method.yellow(),
-                                    url_str.cyan(),
-                                    colored_status,
-                                    size.to_string().blue(),
-                                    elapsed
-                                ));
+                            
+                            let body_text = if cli.include_res {
+                                Some(resp.text().await.unwrap_or_default())
                             } else {
-                                output_str.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
-                                    method,
-                                    url_str,
-                                    status,
-                                    size,
-                                    elapsed
-                                ));
-                            }
+                                None
+                            };
 
-                            if let Some(raw_req) = req_for_display {
-                                output_str.push_str(&format!("[Raw Request]\n{}\n", raw_req));
-                            }
-
-                            if cli.include_res {
-                                if let Ok(body) = resp.text().await {
-                                    output_str.push_str(&format!("[Response Body]\n{}\n", body));
+                            let output_str = match cli.format {
+                                OutputFormat::Plain => {
+                                    let mut s = String::new();
+                                    if cli.output.is_none() && !cli.no_color {
+                                        let status_str = status.to_string();
+                                        let colored_status = if status.is_success() {
+                                            status_str.green()
+                                        } else if status.is_redirection() {
+                                            status_str.yellow()
+                                        } else {
+                                            status_str.red()
+                                        };
+                                        s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                            method.yellow(),
+                                            url_str.cyan(),
+                                            colored_status,
+                                            size.to_string().blue(),
+                                            elapsed
+                                        ));
+                                    } else {
+                                        s.push_str(&format!("[{}] [{}] -> {} | Size: {} | Time: {:?}\n",
+                                            method,
+                                            url_str,
+                                            status,
+                                            size,
+                                            elapsed
+                                        ));
+                                    }
+                                    if let Some(raw_req) = req_for_display {
+                                        s.push_str(&format!("[Raw Request]\n{}\n", raw_req));
+                                    }
+                                    if let Some(body) = body_text {
+                                        s.push_str(&format!("[Response Body]\n{}\n", body));
+                                    }
+                                    s
+                                },
+                                OutputFormat::Jsonl => {
+                                    let mut json_output = json!({
+                                        "method": method,
+                                        "url": url_str,
+                                        "status_code": status.as_u16(),
+                                        "content_length": size,
+                                        "response_time_ms": elapsed.as_millis(),
+                                    });
+                                    if let Some(req) = req_for_display {
+                                        json_output["raw_request"] = req.into();
+                                    }
+                                    if let Some(body) = body_text {
+                                        json_output["response_body"] = body.into();
+                                    }
+                                    serde_json::to_string(&json_output).unwrap_or_default() + "\n"
                                 }
-                            }
+                            };
 
                             if let Some(writer) = output_writer {
                                 let mut writer = writer.lock().await;
