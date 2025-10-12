@@ -1,0 +1,28 @@
+---
+name: Homebrew tap Publish
+on:
+  release:
+    types: [published]
+jobs:
+  homebrew-releaser:
+    runs-on: ubuntu-latest
+    name: homebrew-releaser
+    steps:
+      - name: Release reqs to Homebrew tap
+        uses: Justintime50/homebrew-releaser@v1
+        with:
+          homebrew_owner: hahwul
+          homebrew_tap: homebrew-reqs
+          formula_folder: Formula
+          github_token: ${{ secrets.reqs_PUBLISH_TOKEN }}
+          commit_owner: hahwul
+          commit_email: hahwul@gmail.com
+          depends_on: |
+            "rust"
+          install: |
+            system "cargo build --release"
+            bin.install "target/release/reqs"
+          test: system "{bin}/reqs", "-V"
+          update_readme_table: true
+          skip_commit: false
+          debug: false
