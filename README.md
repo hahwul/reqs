@@ -35,6 +35,9 @@ The server provides a `send_requests` tool that accepts a list of HTTP requests 
   "filter_status": [200, 201],
   "filter_string": "example text",
   "filter_regex": "pattern.*match",
+  "follow_redirect": true,
+  "http2": false,
+  "headers": ["User-Agent: my-app", "Authorization: Bearer token"],
   "include_req": true,
   "include_res": true
 }
@@ -45,6 +48,9 @@ The server provides a `send_requests` tool that accepts a list of HTTP requests 
 - `filter_status` (optional): Filter results by HTTP status codes (e.g., `[200, 404]`)
 - `filter_string` (optional): Filter results containing specific text in response body
 - `filter_regex` (optional): Filter results matching regex pattern in response body
+- `follow_redirect` (optional): Whether to follow HTTP redirects. Defaults to true
+- `http2` (optional): Use HTTP/2 for requests. Defaults to false (HTTP/1.1)
+- `headers` (optional): Custom headers to add to the request (e.g., `["User-Agent: my-app", "Authorization: Bearer token"]`)
 - `include_req` (optional): Include raw HTTP request details in output
 - `include_res` (optional): Include response body in output
 
