@@ -661,6 +661,8 @@ impl ServerHandler for ReqsServerHandler {
         
         // Create input schema properties
         let mut properties = HashMap::new();
+        
+        // requests parameter
         let mut requests_prop = serde_json::Map::new();
         requests_prop.insert("type".to_string(), json!("array"));
         requests_prop.insert("description".to_string(), json!("List of HTTP requests. Each request can be a simple URL or a string with METHOD URL BODY format (e.g., 'POST https://example.com data=value')"));
@@ -668,6 +670,39 @@ impl ServerHandler for ReqsServerHandler {
         items.insert("type".to_string(), json!("string"));
         requests_prop.insert("items".to_string(), json!(items));
         properties.insert("requests".to_string(), requests_prop);
+
+        // filter_status parameter
+        let mut filter_status_prop = serde_json::Map::new();
+        filter_status_prop.insert("type".to_string(), json!("array"));
+        filter_status_prop.insert("description".to_string(), json!("Filter results by HTTP status codes (e.g., [200, 404]). Only responses with these status codes will be returned."));
+        let mut status_items = serde_json::Map::new();
+        status_items.insert("type".to_string(), json!("number"));
+        filter_status_prop.insert("items".to_string(), json!(status_items));
+        properties.insert("filter_status".to_string(), filter_status_prop);
+
+        // filter_string parameter
+        let mut filter_string_prop = serde_json::Map::new();
+        filter_string_prop.insert("type".to_string(), json!("string"));
+        filter_string_prop.insert("description".to_string(), json!("Filter results by string match in response body. Only responses containing this string will be returned."));
+        properties.insert("filter_string".to_string(), filter_string_prop);
+
+        // filter_regex parameter
+        let mut filter_regex_prop = serde_json::Map::new();
+        filter_regex_prop.insert("type".to_string(), json!("string"));
+        filter_regex_prop.insert("description".to_string(), json!("Filter results by regex pattern in response body. Only responses matching this pattern will be returned."));
+        properties.insert("filter_regex".to_string(), filter_regex_prop);
+
+        // include_req parameter
+        let mut include_req_prop = serde_json::Map::new();
+        include_req_prop.insert("type".to_string(), json!("boolean"));
+        include_req_prop.insert("description".to_string(), json!("Include raw HTTP request details in the output."));
+        properties.insert("include_req".to_string(), include_req_prop);
+
+        // include_res parameter
+        let mut include_res_prop = serde_json::Map::new();
+        include_res_prop.insert("type".to_string(), json!("boolean"));
+        include_res_prop.insert("description".to_string(), json!("Include response body in the output."));
+        properties.insert("include_res".to_string(), include_res_prop);
 
         let input_schema = rust_mcp_sdk::schema::ToolInputSchema::new(
             vec!["requests".to_string()],
@@ -677,7 +712,7 @@ impl ServerHandler for ReqsServerHandler {
         Ok(ListToolsResult {
             tools: vec![Tool {
                 name: "send_requests".to_string(),
-                description: Some("Send HTTP requests and return response metadata. Accepts a list of requests in the format: URL or 'METHOD URL BODY'".to_string()),
+                description: Some("Send HTTP requests and return response metadata. Accepts a list of requests with optional filters (filter_status, filter_string, filter_regex) and output options (include_req, include_res) for LLM analysis.".to_string()),
                 input_schema,
                 annotations: None,
                 meta: None,
@@ -701,17 +736,71 @@ impl ServerHandler for ReqsServerHandler {
             )));
         }
 
-        let requests = request
+        let args = request
             .params
             .arguments
             .as_ref()
-            .and_then(|args| args.get("requests"))
+            .ok_or_else(|| {
+                CallToolError::new(RpcError::invalid_params().with_message(
+                    "Missing arguments".to_string(),
+                ))
+            })?;
+
+        let requests = args
+            .get("requests")
             .and_then(|v| v.as_array())
             .ok_or_else(|| {
                 CallToolError::new(RpcError::invalid_params().with_message(
                     "requests parameter must be an array".to_string(),
                 ))
             })?;
+
+        // Extract filter parameters
+        let filter_status: Vec<u16> = args
+            .get("filter_status")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u16))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let filter_string = args
+            .get("filter_string")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let filter_regex_str = args
+            .get("filter_regex")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let include_req = args
+            .get("include_req")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let include_res = args
+            .get("include_res")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Compile regex if provided
+        let filter_regex = if let Some(regex_str) = &filter_regex_str {
+            match Regex::new(regex_str) {
+                Ok(re) => Some(re),
+                Err(e) => {
+                    return Err(CallToolError::new(
+                        RpcError::invalid_params().with_message(
+                            format!("Invalid regex provided for filter_regex: {}", e)
+                        ),
+                    ));
+                }
+            }
+        } else {
+            None
+        };
 
         let mut results = Vec::new();
 
@@ -813,20 +902,109 @@ impl ServerHandler for ReqsServerHandler {
                 request_builder = request_builder.body(body_content.clone());
             }
 
+            // Capture raw request if needed
+            let raw_request = if include_req {
+                match request_builder.try_clone().unwrap().build() {
+                    Ok(req) => {
+                        let req_method = req.method();
+                        let url = req.url();
+                        let path_and_query = if let Some(query) = url.query() {
+                            format!("{}?{}", url.path(), query)
+                        } else {
+                            url.path().to_string()
+                        };
+                        let version = if self.cli.http2 { "HTTP/2.0" } else { "HTTP/1.1" };
+                        let mut raw_req = format!("{} {} {}\n", req_method, path_and_query, version);
+                        raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
+
+                        for (name, value) in req.headers() {
+                            raw_req.push_str(&format!("{}: {}\n", name, value.to_str().unwrap_or("[unprintable]")));
+                        }
+
+                        if let Some(req_body) = req.body().and_then(|b| b.as_bytes()) {
+                            if !req_body.is_empty() {
+                                raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(req_body)));
+                            }
+                        }
+                        Some(raw_req)
+                    },
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
             let start_time = Instant::now();
             match request_builder.send().await {
                 Ok(resp) => {
                     let elapsed = start_time.elapsed();
                     let status = resp.status();
                     let size = resp.content_length().unwrap_or(0);
+                    let ip_addr = resp.remote_addr().map(|s| s.ip().to_string()).unwrap_or_default();
 
-                    results.push(json!({
+                    // Fetch response body if needed for filtering or output
+                    let body_text = if include_res || filter_string.is_some() || filter_regex.is_some() {
+                        Some(resp.text().await.unwrap_or_default())
+                    } else {
+                        None
+                    };
+
+                    let mut should_output = true;
+
+                    // Filter by status codes
+                    if !filter_status.is_empty() && !filter_status.contains(&status.as_u16()) {
+                        should_output = false;
+                    }
+
+                    // Filter by string in response body
+                    if should_output && filter_string.is_some() {
+                        if let Some(body) = &body_text {
+                            if !body.contains(filter_string.as_ref().unwrap()) {
+                                should_output = false;
+                            }
+                        } else {
+                            should_output = false;
+                        }
+                    }
+
+                    // Filter by regex in response body
+                    if should_output && filter_regex.is_some() {
+                        if let Some(body) = &body_text {
+                            if !filter_regex.as_ref().unwrap().is_match(body) {
+                                should_output = false;
+                            }
+                        } else {
+                            should_output = false;
+                        }
+                    }
+
+                    if !should_output {
+                        continue; // Skip this result
+                    }
+
+                    let mut result = json!({
                         "method": method,
                         "url": url_str,
                         "status_code": status.as_u16(),
                         "content_length": size,
                         "response_time_ms": elapsed.as_millis(),
-                    }));
+                    });
+
+                    if !ip_addr.is_empty() {
+                        result["ip_address"] = ip_addr.into();
+                    }
+
+                    if let Some(raw_req) = raw_request {
+                        result["raw_request"] = raw_req.into();
+                    }
+
+                    if include_res {
+                        if let Some(body) = body_text {
+                            result["response_body"] = body.into();
+                        }
+                    }
+
+                    results.push(result);
                 }
                 Err(err) => {
                     results.push(json!({

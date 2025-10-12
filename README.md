@@ -21,7 +21,7 @@ reqs --mcp
 
 ### MCP Tool: send_requests
 
-The server provides a `send_requests` tool that accepts a list of HTTP requests and returns their results.
+The server provides a `send_requests` tool that accepts a list of HTTP requests and returns their results. The tool supports filtering and output customization for LLM analysis.
 
 **Input format:**
 ```json
@@ -31,9 +31,22 @@ The server provides a `send_requests` tool that accepts a list of HTTP requests 
     "https://www.hahwul.com/about/",
     "https://github.com",
     "POST https://www.hahwul.com a=d"
-  ]
+  ],
+  "filter_status": [200, 201],
+  "filter_string": "example text",
+  "filter_regex": "pattern.*match",
+  "include_req": true,
+  "include_res": true
 }
 ```
+
+**Parameters:**
+- `requests` (required): Array of URLs or request strings in format `METHOD URL BODY`
+- `filter_status` (optional): Filter results by HTTP status codes (e.g., `[200, 404]`)
+- `filter_string` (optional): Filter results containing specific text in response body
+- `filter_regex` (optional): Filter results matching regex pattern in response body
+- `include_req` (optional): Include raw HTTP request details in output
+- `include_res` (optional): Include response body in output
 
 **Output format:**
 ```json
@@ -41,6 +54,11 @@ The server provides a `send_requests` tool that accepts a list of HTTP requests 
 {"content_length":32498,"method":"GET","response_time_ms":43,"status_code":200,"url":"https://www.hahwul.com"}
 {"content_length":30063,"method":"GET","response_time_ms":44,"status_code":200,"url":"https://www.hahwul.com/about/"}
 {"content_length":0,"method":"GET","response_time_ms":49,"status_code":200,"url":"https://github.com"}
+```
+
+With `include_req` and `include_res`, the output includes additional fields:
+```json
+{"content_length":149,"ip_address":"127.0.0.1","method":"GET","raw_request":"GET /path HTTP/1.1\nHost: example.com\n","response_body":"<html>...</html>","response_time_ms":42,"status_code":200,"url":"https://example.com"}
 ```
 
 ## Usage
