@@ -704,6 +704,27 @@ impl ServerHandler for ReqsServerHandler {
         include_res_prop.insert("description".to_string(), json!("Include response body in the output."));
         properties.insert("include_res".to_string(), include_res_prop);
 
+        // follow_redirect parameter
+        let mut follow_redirect_prop = serde_json::Map::new();
+        follow_redirect_prop.insert("type".to_string(), json!("boolean"));
+        follow_redirect_prop.insert("description".to_string(), json!("Whether to follow HTTP redirects. Defaults to true."));
+        properties.insert("follow_redirect".to_string(), follow_redirect_prop);
+
+        // http2 parameter
+        let mut http2_prop = serde_json::Map::new();
+        http2_prop.insert("type".to_string(), json!("boolean"));
+        http2_prop.insert("description".to_string(), json!("Use HTTP/2 for requests. Defaults to false (HTTP/1.1)."));
+        properties.insert("http2".to_string(), http2_prop);
+
+        // headers parameter
+        let mut headers_prop = serde_json::Map::new();
+        headers_prop.insert("type".to_string(), json!("array"));
+        headers_prop.insert("description".to_string(), json!("Custom headers to add to the request (e.g., [\"User-Agent: my-app\", \"Authorization: Bearer token\"])"));
+        let mut headers_items = serde_json::Map::new();
+        headers_items.insert("type".to_string(), json!("string"));
+        headers_prop.insert("items".to_string(), json!(headers_items));
+        properties.insert("headers".to_string(), headers_prop);
+
         let input_schema = rust_mcp_sdk::schema::ToolInputSchema::new(
             vec!["requests".to_string()],
             Some(properties),
@@ -712,7 +733,7 @@ impl ServerHandler for ReqsServerHandler {
         Ok(ListToolsResult {
             tools: vec![Tool {
                 name: "send_requests".to_string(),
-                description: Some("Send HTTP requests and return response metadata. Accepts a list of requests with optional filters (filter_status, filter_string, filter_regex) and output options (include_req, include_res) for LLM analysis.".to_string()),
+                description: Some("Send HTTP requests and return response metadata. Accepts a list of requests with optional filters (filter_status, filter_string, filter_regex), HTTP options (follow_redirect, http2, headers), and output options (include_req, include_res) for LLM analysis.".to_string()),
                 input_schema,
                 annotations: None,
                 meta: None,
@@ -786,6 +807,27 @@ impl ServerHandler for ReqsServerHandler {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        // Extract HTTP configuration parameters
+        let follow_redirect = args
+            .get("follow_redirect")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(self.cli.follow_redirect);
+
+        let http2 = args
+            .get("http2")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(self.cli.http2);
+
+        let custom_headers: Vec<String> = args
+            .get("headers")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         // Compile regex if provided
         let filter_regex = if let Some(regex_str) = &filter_regex_str {
             match Regex::new(regex_str) {
@@ -804,15 +846,28 @@ impl ServerHandler for ReqsServerHandler {
 
         let mut results = Vec::new();
 
-        // Create HTTP client
-        let redirect_policy = if self.cli.follow_redirect {
+        // Create HTTP client using the parameters from the tool call (with CLI defaults as fallback)
+        let redirect_policy = if follow_redirect {
             Policy::limited(10)
         } else {
             Policy::none()
         };
 
         let mut default_headers = HeaderMap::new();
+        
+        // First, apply headers from CLI (global default)
         for header_str in &self.cli.headers {
+            if let Some((key, value)) = header_str.split_once(": ") {
+                if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
+                    if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
+                        default_headers.insert(header_name, header_value);
+                    }
+                }
+            }
+        }
+        
+        // Then, apply custom headers from the tool call (overrides CLI headers)
+        for header_str in &custom_headers {
             if let Some((key, value)) = header_str.split_once(": ") {
                 if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
                     if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
@@ -840,7 +895,7 @@ impl ServerHandler for ReqsServerHandler {
             client_builder = client_builder.proxy(proxy);
         }
 
-        if !self.cli.http2 {
+        if !http2 {
             client_builder = client_builder.http1_only();
         }
 
@@ -913,7 +968,7 @@ impl ServerHandler for ReqsServerHandler {
                         } else {
                             url.path().to_string()
                         };
-                        let version = if self.cli.http2 { "HTTP/2.0" } else { "HTTP/1.1" };
+                        let version = if http2 { "HTTP/2.0" } else { "HTTP/1.1" };
                         let mut raw_req = format!("{} {} {}\n", req_method, path_and_query, version);
                         raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
 
