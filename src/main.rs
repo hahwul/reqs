@@ -1,31 +1,35 @@
 use anyhow::Result;
-use colored::*;
 use clap::Parser;
+use colored::*;
 use futures::stream::{self, StreamExt};
-use reqwest::{Client, redirect::Policy, header::{HeaderMap, HeaderName, HeaderValue}};
+use rand::Rng;
+use regex::Regex;
+use reqwest::{
+    Client,
+    header::{HeaderMap, HeaderName, HeaderValue},
+    redirect::Policy,
+};
 use scraper::{Html, Selector};
 use serde_json::json;
 use std::io::{self, BufRead};
-use std::time::{Duration, Instant};
-use tokio::task;
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::fs::File;
-use rand::Rng;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::fs::File;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::Mutex;
-use regex::Regex;
+use tokio::task;
 
 // MCP imports (only used when --mcp flag is set)
-use rust_mcp_sdk::mcp_server::{server_runtime, ServerHandler, ServerRuntime};
-use rust_mcp_sdk::McpServer;
-use rust_mcp_sdk::schema::{
-    CallToolRequest, CallToolResult, Implementation, InitializeResult, ListToolsRequest,
-    ListToolsResult, RpcError, ServerCapabilities, ServerCapabilitiesTools, TextContent, Tool,
-    LATEST_PROTOCOL_VERSION,
-};
-use rust_mcp_sdk::schema::schema_utils::CallToolError;
-use rust_mcp_sdk::{StdioTransport, TransportOptions};
 use async_trait::async_trait;
+use rust_mcp_sdk::McpServer;
+use rust_mcp_sdk::mcp_server::{ServerHandler, ServerRuntime, server_runtime};
+use rust_mcp_sdk::schema::schema_utils::CallToolError;
+use rust_mcp_sdk::schema::{
+    CallToolRequest, CallToolResult, Implementation, InitializeResult, LATEST_PROTOCOL_VERSION,
+    ListToolsRequest, ListToolsResult, RpcError, ServerCapabilities, ServerCapabilitiesTools,
+    TextContent, Tool,
+};
+use rust_mcp_sdk::{StdioTransport, TransportOptions};
 
 #[derive(clap::ValueEnum, Debug, Clone, Default)]
 enum OutputFormat {
@@ -169,17 +173,22 @@ async fn main() -> Result<()> {
         return run_mcp_server(cli).await;
     }
 
-    let parsed_filter_regex: Arc<Option<Regex>> = Arc::new(if let Some(regex_str) = &cli.filter_regex {
-        match Regex::new(regex_str) {
-            Ok(re) => Some(re),
-            Err(e) => {
-                eprintln!("[Warning] Invalid regex provided for --filter-regex: {}. Disabling regex filtering.", e);
-                None
+    let parsed_filter_regex: Arc<Option<Regex>> = Arc::new(
+        if let Some(regex_str) = &cli.filter_regex {
+            match Regex::new(regex_str) {
+                Ok(re) => Some(re),
+                Err(e) => {
+                    eprintln!(
+                        "[Warning] Invalid regex provided for --filter-regex: {}. Disabling regex filtering.",
+                        e
+                    );
+                    None
+                }
             }
-        }
-    } else {
-        None
-    });
+        } else {
+            None
+        },
+    );
 
     let redirect_policy = if cli.follow_redirect {
         Policy::limited(10) // Default reqwest behavior for following redirects
@@ -196,12 +205,14 @@ async fn main() -> Result<()> {
                 } else {
                     eprintln!("[Warning] Invalid header value for key '{}'", key);
                 }
-            }
-            else {
+            } else {
                 eprintln!("[Warning] Invalid header name: {}", key);
             }
         } else {
-            eprintln!("[Warning] Invalid header format. Expected 'Key: Value'. Got: {}", header_str);
+            eprintln!(
+                "[Warning] Invalid header format. Expected 'Key: Value'. Got: {}",
+                header_str
+            );
         }
     }
 
@@ -228,7 +239,8 @@ async fn main() -> Result<()> {
 
     let last_request_time = Arc::new(Mutex::new(Instant::now()));
 
-    let output_writer: Option<Arc<Mutex<BufWriter<File>>>> = if let Some(output_path) = &cli.output {
+    let output_writer: Option<Arc<Mutex<BufWriter<File>>>> = if let Some(output_path) = &cli.output
+    {
         let file = File::create(output_path).await?;
         Some(Arc::new(Mutex::new(BufWriter::new(file))))
     } else {
@@ -287,7 +299,7 @@ async fn main() -> Result<()> {
                 }
 
                 let parts: Vec<&str> = url.trim().split_whitespace().collect();
-                
+
                 let (method, url_str, body): (String, String, Option<String>) = if parts.is_empty() {
                     return;
                 } else if parts.len() > 1 && ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH", "OPTIONS"].contains(&parts[0].to_uppercase().as_str()) {
@@ -326,7 +338,7 @@ async fn main() -> Result<()> {
                     if let Some(body_content) = &body {
                         request_builder = request_builder.body(body_content.clone());
                     }
-                    
+
                     let req_for_display = if cli.include_req {
                         match request_builder.try_clone().unwrap().build() {
                             Ok(req) => {
@@ -385,7 +397,7 @@ async fn main() -> Result<()> {
                             let status = resp.status();
                             let size = resp.content_length().unwrap_or(0);
                             let ip_addr = resp.remote_addr().map(|s| s.ip().to_string()).unwrap_or_default();
-                            
+
                             let body_text = if cli.include_res || cli.filter_string.is_some() || cli.filter_regex.is_some() || cli.include_title {
                                 Some(resp.text().await.unwrap_or_default())
                             } else {
@@ -639,8 +651,12 @@ async fn run_mcp_server(cli: Cli) -> Result<()> {
     let handler = ReqsServerHandler { cli: cli.clone() };
 
     // Create and start server
-    let server: Arc<ServerRuntime> = server_runtime::create_server(server_details, transport, handler);
-    server.start().await.map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+    let server: Arc<ServerRuntime> =
+        server_runtime::create_server(server_details, transport, handler);
+    server
+        .start()
+        .await
+        .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
 
     Ok(())
 }
@@ -658,10 +674,10 @@ impl ServerHandler for ReqsServerHandler {
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<ListToolsResult, RpcError> {
         use std::collections::HashMap;
-        
+
         // Create input schema properties
         let mut properties = HashMap::new();
-        
+
         // requests parameter
         let mut requests_prop = serde_json::Map::new();
         requests_prop.insert("type".to_string(), json!("array"));
@@ -695,25 +711,37 @@ impl ServerHandler for ReqsServerHandler {
         // include_req parameter
         let mut include_req_prop = serde_json::Map::new();
         include_req_prop.insert("type".to_string(), json!("boolean"));
-        include_req_prop.insert("description".to_string(), json!("Include raw HTTP request details in the output."));
+        include_req_prop.insert(
+            "description".to_string(),
+            json!("Include raw HTTP request details in the output."),
+        );
         properties.insert("include_req".to_string(), include_req_prop);
 
         // include_res parameter
         let mut include_res_prop = serde_json::Map::new();
         include_res_prop.insert("type".to_string(), json!("boolean"));
-        include_res_prop.insert("description".to_string(), json!("Include response body in the output."));
+        include_res_prop.insert(
+            "description".to_string(),
+            json!("Include response body in the output."),
+        );
         properties.insert("include_res".to_string(), include_res_prop);
 
         // follow_redirect parameter
         let mut follow_redirect_prop = serde_json::Map::new();
         follow_redirect_prop.insert("type".to_string(), json!("boolean"));
-        follow_redirect_prop.insert("description".to_string(), json!("Whether to follow HTTP redirects. Defaults to true."));
+        follow_redirect_prop.insert(
+            "description".to_string(),
+            json!("Whether to follow HTTP redirects. Defaults to true."),
+        );
         properties.insert("follow_redirect".to_string(), follow_redirect_prop);
 
         // http2 parameter
         let mut http2_prop = serde_json::Map::new();
         http2_prop.insert("type".to_string(), json!("boolean"));
-        http2_prop.insert("description".to_string(), json!("Use HTTP/2 for requests. Defaults to false (HTTP/1.1)."));
+        http2_prop.insert(
+            "description".to_string(),
+            json!("Use HTTP/2 for requests. Defaults to false (HTTP/1.1)."),
+        );
         properties.insert("http2".to_string(), http2_prop);
 
         // headers parameter
@@ -757,23 +785,20 @@ impl ServerHandler for ReqsServerHandler {
             )));
         }
 
-        let args = request
-            .params
-            .arguments
-            .as_ref()
-            .ok_or_else(|| {
-                CallToolError::new(RpcError::invalid_params().with_message(
-                    "Missing arguments".to_string(),
-                ))
-            })?;
+        let args = request.params.arguments.as_ref().ok_or_else(|| {
+            CallToolError::new(
+                RpcError::invalid_params().with_message("Missing arguments".to_string()),
+            )
+        })?;
 
         let requests = args
             .get("requests")
             .and_then(|v| v.as_array())
             .ok_or_else(|| {
-                CallToolError::new(RpcError::invalid_params().with_message(
-                    "requests parameter must be an array".to_string(),
-                ))
+                CallToolError::new(
+                    RpcError::invalid_params()
+                        .with_message("requests parameter must be an array".to_string()),
+                )
             })?;
 
         // Extract filter parameters
@@ -833,11 +858,9 @@ impl ServerHandler for ReqsServerHandler {
             match Regex::new(regex_str) {
                 Ok(re) => Some(re),
                 Err(e) => {
-                    return Err(CallToolError::new(
-                        RpcError::invalid_params().with_message(
-                            format!("Invalid regex provided for filter_regex: {}", e)
-                        ),
-                    ));
+                    return Err(CallToolError::new(RpcError::invalid_params().with_message(
+                        format!("Invalid regex provided for filter_regex: {}", e),
+                    )));
                 }
             }
         } else {
@@ -854,7 +877,7 @@ impl ServerHandler for ReqsServerHandler {
         };
 
         let mut default_headers = HeaderMap::new();
-        
+
         // First, apply headers from CLI (global default)
         for header_str in &self.cli.headers {
             if let Some((key, value)) = header_str.split_once(": ") {
@@ -865,7 +888,7 @@ impl ServerHandler for ReqsServerHandler {
                 }
             }
         }
-        
+
         // Then, apply custom headers from the tool call (overrides CLI headers)
         for header_str in &custom_headers {
             if let Some((key, value)) = header_str.split_once(": ") {
@@ -889,7 +912,8 @@ impl ServerHandler for ReqsServerHandler {
         if let Some(proxy_url) = &self.cli.proxy {
             let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| {
                 CallToolError::new(
-                    RpcError::internal_error().with_message(format!("Failed to create proxy: {}", e)),
+                    RpcError::internal_error()
+                        .with_message(format!("Failed to create proxy: {}", e)),
                 )
             })?;
             client_builder = client_builder.proxy(proxy);
@@ -912,7 +936,8 @@ impl ServerHandler for ReqsServerHandler {
                 .as_str()
                 .ok_or_else(|| {
                     CallToolError::new(
-                        RpcError::invalid_params().with_message("Each request must be a string".to_string()),
+                        RpcError::invalid_params()
+                            .with_message("Each request must be a string".to_string()),
                     )
                 })?
                 .trim();
@@ -969,20 +994,26 @@ impl ServerHandler for ReqsServerHandler {
                             url.path().to_string()
                         };
                         let version = if http2 { "HTTP/2.0" } else { "HTTP/1.1" };
-                        let mut raw_req = format!("{} {} {}\n", req_method, path_and_query, version);
+                        let mut raw_req =
+                            format!("{} {} {}\n", req_method, path_and_query, version);
                         raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
 
                         for (name, value) in req.headers() {
-                            raw_req.push_str(&format!("{}: {}\n", name, value.to_str().unwrap_or("[unprintable]")));
+                            raw_req.push_str(&format!(
+                                "{}: {}\n",
+                                name,
+                                value.to_str().unwrap_or("[unprintable]")
+                            ));
                         }
 
                         if let Some(req_body) = req.body().and_then(|b| b.as_bytes()) {
                             if !req_body.is_empty() {
-                                raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(req_body)));
+                                raw_req
+                                    .push_str(&format!("\n{}", String::from_utf8_lossy(req_body)));
                             }
                         }
                         Some(raw_req)
-                    },
+                    }
                     Err(_) => None,
                 }
             } else {
@@ -995,14 +1026,18 @@ impl ServerHandler for ReqsServerHandler {
                     let elapsed = start_time.elapsed();
                     let status = resp.status();
                     let size = resp.content_length().unwrap_or(0);
-                    let ip_addr = resp.remote_addr().map(|s| s.ip().to_string()).unwrap_or_default();
+                    let ip_addr = resp
+                        .remote_addr()
+                        .map(|s| s.ip().to_string())
+                        .unwrap_or_default();
 
                     // Fetch response body if needed for filtering or output
-                    let body_text = if include_res || filter_string.is_some() || filter_regex.is_some() {
-                        Some(resp.text().await.unwrap_or_default())
-                    } else {
-                        None
-                    };
+                    let body_text =
+                        if include_res || filter_string.is_some() || filter_regex.is_some() {
+                            Some(resp.text().await.unwrap_or_default())
+                        } else {
+                            None
+                        };
 
                     let mut should_output = true;
 
