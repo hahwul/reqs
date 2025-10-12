@@ -1039,28 +1039,26 @@ impl ServerHandler for ReqsServerHandler {
                     }
 
                     // Filter by string in response body
-                    if should_output
-                        && let Some(filter_str) = &filter_string {
-                            if let Some(body) = &body_text {
-                                if !body.contains(filter_str) {
-                                    should_output = false;
-                                }
-                            } else {
+                    if should_output && let Some(filter_str) = &filter_string {
+                        if let Some(body) = &body_text {
+                            if !body.contains(filter_str) {
                                 should_output = false;
                             }
+                        } else {
+                            should_output = false;
                         }
+                    }
 
                     // Filter by regex in response body
-                    if should_output
-                        && let Some(re) = &filter_regex {
-                            if let Some(body) = &body_text {
-                                if !re.is_match(body) {
-                                    should_output = false;
-                                }
-                            } else {
+                    if should_output && let Some(re) = &filter_regex {
+                        if let Some(body) = &body_text {
+                            if !re.is_match(body) {
                                 should_output = false;
                             }
+                        } else {
+                            should_output = false;
                         }
+                    }
 
                     if !should_output {
                         continue; // Skip this result
