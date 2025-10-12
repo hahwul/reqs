@@ -147,16 +147,16 @@ fn normalize_url_scheme(url_str: &str) -> String {
         return trimmed_url.to_string();
     }
 
-    if let Some(pos) = trimmed_url.rfind(':') {
-        if let Some(port_str) = trimmed_url.get(pos + 1..) {
-            // Ensure what follows ':' is a valid port number and not part of the path
-            if !port_str.is_empty() && port_str.chars().all(char::is_numeric) {
-                if port_str == "80" {
-                    return format!("http://{}", trimmed_url);
-                }
-                // For 443 and all other ports, use https.
-                return format!("https://{}", trimmed_url);
+    if let Some(pos) = trimmed_url.rfind(':')
+        && let Some(port_str) = trimmed_url.get(pos + 1..)
+    {
+        // Ensure what follows ':' is a valid port number and not part of the path
+        if !port_str.is_empty() && port_str.chars().all(char::is_numeric) {
+            if port_str == "80" {
+                return format!("http://{}", trimmed_url);
             }
+            // For 443 and all other ports, use https.
+            return format!("https://{}", trimmed_url);
         }
     }
 
@@ -253,7 +253,7 @@ async fn main() -> Result<()> {
     let handles = stdin
         .lock()
         .lines()
-        .filter_map(Result::ok)
+        .map_while(Result::ok)
         .map(|url| {
             let client = client.clone();
             let cli = cli.clone(); // Clone cli for each task
@@ -298,7 +298,7 @@ async fn main() -> Result<()> {
                     *last_req_guard = Instant::now();
                 }
 
-                let parts: Vec<&str> = url.trim().split_whitespace().collect();
+                let parts: Vec<&str> = url.split_whitespace().collect();
 
                 let (method, url_str, body): (String, String, Option<String>) = if parts.is_empty() {
                     return;
@@ -363,13 +363,11 @@ async fn main() -> Result<()> {
 
                                 // Add/overwrite with custom headers from the CLI for display
                                 for header_str in &cli.headers {
-                                    if let Some((key, value)) = header_str.split_once(": ") {
-                                        if let Ok(name) = HeaderName::from_bytes(key.as_bytes()) {
-                                            if let Ok(val) = HeaderValue::from_str(value.trim()) {
+                                    if let Some((key, value)) = header_str.split_once(": ")
+                                        && let Ok(name) = HeaderName::from_bytes(key.as_bytes())
+                                            && let Ok(val) = HeaderValue::from_str(value.trim()) {
                                                 display_headers.insert(name, val);
                                             }
-                                        }
-                                    }
                                 }
 
                                 // Now print the combined headers
@@ -377,11 +375,10 @@ async fn main() -> Result<()> {
                                     raw_req.push_str(&format!("{}: {}\n", name, value.to_str().unwrap_or("[unprintable]")));
                                 }
 
-                                if let Some(body) = req.body().and_then(|b| b.as_bytes()) {
-                                    if !body.is_empty() {
+                                if let Some(body) = req.body().and_then(|b| b.as_bytes())
+                                    && !body.is_empty() {
                                         raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(body)));
                                     }
-                                }
                                 Some(raw_req)
                             },
                             Err(_) => None,
@@ -531,11 +528,10 @@ async fn main() -> Result<()> {
                                     if let Some(raw_req) = req_for_display {
                                         s.push_str(&format!("[Raw Request]\n{}\n", raw_req));
                                     }
-                                    if cli.include_res {
-                                        if let Some(body) = body_text {
+                                    if cli.include_res
+                                        && let Some(body) = body_text {
                                             s.push_str(&format!("[Response Body]\n{}\n", body));
                                         }
-                                    }
                                     s
                                 },
                                 OutputFormat::Jsonl => {
@@ -553,11 +549,10 @@ async fn main() -> Result<()> {
                                     if let Some(req) = req_for_display {
                                         json_output["raw_request"] = req.into();
                                     }
-                                    if cli.include_res {
-                                        if let Some(body) = body_text {
+                                    if cli.include_res
+                                        && let Some(body) = body_text {
                                             json_output["response_body"] = body.into();
                                         }
-                                    }
                                     serde_json::to_string(&json_output).unwrap_or_default() + "\n"
                                 },
                                 OutputFormat::Csv => {
@@ -880,23 +875,21 @@ impl ServerHandler for ReqsServerHandler {
 
         // First, apply headers from CLI (global default)
         for header_str in &self.cli.headers {
-            if let Some((key, value)) = header_str.split_once(": ") {
-                if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
-                    if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
-                        default_headers.insert(header_name, header_value);
-                    }
-                }
+            if let Some((key, value)) = header_str.split_once(": ")
+                && let Ok(header_name) = HeaderName::from_bytes(key.as_bytes())
+                && let Ok(header_value) = HeaderValue::from_str(value.trim())
+            {
+                default_headers.insert(header_name, header_value);
             }
         }
 
         // Then, apply custom headers from the tool call (overrides CLI headers)
         for header_str in &custom_headers {
-            if let Some((key, value)) = header_str.split_once(": ") {
-                if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
-                    if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
-                        default_headers.insert(header_name, header_value);
-                    }
-                }
+            if let Some((key, value)) = header_str.split_once(": ")
+                && let Ok(header_name) = HeaderName::from_bytes(key.as_bytes())
+                && let Ok(header_value) = HeaderValue::from_str(value.trim())
+            {
+                default_headers.insert(header_name, header_value);
             }
         }
 
@@ -1006,11 +999,10 @@ impl ServerHandler for ReqsServerHandler {
                             ));
                         }
 
-                        if let Some(req_body) = req.body().and_then(|b| b.as_bytes()) {
-                            if !req_body.is_empty() {
-                                raw_req
-                                    .push_str(&format!("\n{}", String::from_utf8_lossy(req_body)));
-                            }
+                        if let Some(req_body) = req.body().and_then(|b| b.as_bytes())
+                            && !req_body.is_empty()
+                        {
+                            raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(req_body)));
                         }
                         Some(raw_req)
                     }
@@ -1047,26 +1039,28 @@ impl ServerHandler for ReqsServerHandler {
                     }
 
                     // Filter by string in response body
-                    if should_output && filter_string.is_some() {
-                        if let Some(body) = &body_text {
-                            if !body.contains(filter_string.as_ref().unwrap()) {
+                    if should_output
+                        && let Some(filter_str) = &filter_string {
+                            if let Some(body) = &body_text {
+                                if !body.contains(filter_str) {
+                                    should_output = false;
+                                }
+                            } else {
                                 should_output = false;
                             }
-                        } else {
-                            should_output = false;
                         }
-                    }
 
                     // Filter by regex in response body
-                    if should_output && filter_regex.is_some() {
-                        if let Some(body) = &body_text {
-                            if !filter_regex.as_ref().unwrap().is_match(body) {
+                    if should_output
+                        && let Some(re) = &filter_regex {
+                            if let Some(body) = &body_text {
+                                if !re.is_match(body) {
+                                    should_output = false;
+                                }
+                            } else {
                                 should_output = false;
                             }
-                        } else {
-                            should_output = false;
                         }
-                    }
 
                     if !should_output {
                         continue; // Skip this result
@@ -1088,10 +1082,8 @@ impl ServerHandler for ReqsServerHandler {
                         result["raw_request"] = raw_req.into();
                     }
 
-                    if include_res {
-                        if let Some(body) = body_text {
-                            result["response_body"] = body.into();
-                        }
+                    if include_res && let Some(body) = body_text {
+                        result["response_body"] = body.into();
                     }
 
                     results.push(result);
