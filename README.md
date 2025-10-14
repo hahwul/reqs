@@ -105,3 +105,8 @@ git clone https://github.com/hahwul/reqs
 cd reqs
 cargo build --release
 ```
+
+## Documentation
+
+For detailed documentation, please visit [reqs.hahwul.com](https://reqs.hahwul.com) or check the `docs/` directory.
+
