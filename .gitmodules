@@ -1,4 +1,3 @@
 [submodule "docs/themes/goyo"]
 	path = docs/themes/goyo
-	url = https://github.com/hahwul/goyo.git
-	branch = main
+	url = https://github.com/hahwul/goyo
