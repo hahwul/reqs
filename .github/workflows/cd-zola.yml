@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'docs/**'
+      - "docs/**"
   workflow_dispatch:
 
 jobs:
@@ -22,4 +22,4 @@ jobs:
         uses: shalzz/zola-deploy-action@v0.20.0
         env:
           BUILD_DIR: docs
-          GITHUB_TOKEN: ${{ secrets.reqs_PUBLISH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.REQS_PUBLISH_TOKEN }}

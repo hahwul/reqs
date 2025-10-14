@@ -23,4 +23,4 @@ jobs:
         with:
           files: reqs.cdx.xml
         env:
-          GITHUB_TOKEN: ${{ secrets.reqs_PUBLISH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.REQS_PUBLISH_TOKEN }}
