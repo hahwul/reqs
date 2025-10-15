@@ -1,6 +1,6 @@
 [package]
 name = "reqs"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 authors = ["hahwul"]
 description = "Reqs is a command-line tool for massive sending requests"
