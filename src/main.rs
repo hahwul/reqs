@@ -309,6 +309,80 @@ fn parse_request_line(line: &str) -> (String, String, Option<String>) {
     }
 }
 
+fn build_request(
+    client: &Client,
+    method: &str,
+    url: &str,
+    body: &Option<String>,
+) -> reqwest::RequestBuilder {
+    let mut request_builder = match method {
+        "POST" => client.post(url),
+        "PUT" => client.put(url),
+        "DELETE" => client.delete(url),
+        "HEAD" => client.head(url),
+        "PATCH" => client.patch(url),
+        "OPTIONS" => client.request(reqwest::Method::OPTIONS, url),
+        _ => client.get(url),
+    };
+
+    if let Some(body_content) = body {
+        request_builder = request_builder.body(body_content.clone());
+    }
+
+    request_builder
+}
+
+fn format_raw_request(
+    req: &reqwest::Request,
+    http2: bool,
+    custom_headers: Option<&[String]>,
+) -> String {
+    let method = req.method();
+    let url = req.url();
+    let path_and_query = if let Some(query) = url.query() {
+        format!("{}?{}", url.path(), query)
+    } else {
+        url.path().to_string()
+    };
+    let version = if http2 {
+        HTTP_VERSION_2
+    } else {
+        HTTP_VERSION_1_1
+    };
+    let mut raw_req = format!("{} {} {}\n", method, path_and_query, version);
+    raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
+
+    // Create a temporary HeaderMap for display to handle overrides correctly
+    let mut display_headers = HeaderMap::new();
+
+    // Add headers from the request itself
+    for (name, value) in req.headers() {
+        display_headers.insert(name.clone(), value.clone());
+    }
+
+    // Add/overwrite with custom headers if provided
+    if let Some(headers) = custom_headers {
+        display_headers.extend(parse_headers(headers));
+    }
+
+    // Print the combined headers
+    for (name, value) in &display_headers {
+        raw_req.push_str(&format!(
+            "{}: {}\n",
+            name,
+            value.to_str().unwrap_or("[unprintable]")
+        ));
+    }
+
+    if let Some(body) = req.body().and_then(|b| b.as_bytes())
+        && !body.is_empty()
+    {
+        raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(body)));
+    }
+
+    raw_req
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -413,64 +487,15 @@ async fn main() -> Result<()> {
                         tokio::time::sleep(Duration::from_millis(cli.delay)).await;
                     }
 
-                    let mut request_builder = match method.as_str() {
-                        "POST" => client.post(&url_str),
-                        "PUT" => client.put(&url_str),
-                        "DELETE" => client.delete(&url_str),
-                        "HEAD" => client.head(&url_str),
-                        "PATCH" => client.patch(&url_str),
-                        "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url_str),
-                        _ => client.get(&url_str),
-                    };
-
-                    if let Some(body_content) = &body {
-                        request_builder = request_builder.body(body_content.clone());
-                    }
+                    let request_builder = build_request(&client, &method, &url_str, &body);
 
                     let req_for_display = if cli.include_req {
-                        match request_builder.try_clone().unwrap().build() {
-                            Ok(req) => {
-                                let method = req.method();
-                                let url = req.url();
-                                let path_and_query = if let Some(query) = url.query() {
-                                    format!("{}?{}", url.path(), query)
-                                } else {
-                                    url.path().to_string()
-                                };
-                                let version = if cli.http2 { HTTP_VERSION_2 } else { HTTP_VERSION_1_1 };
-                                let mut raw_req = format!("{} {} {}\n", method, path_and_query, version);
-                                raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
-
-                                // Create a temporary HeaderMap for display to handle overrides correctly
-                                let mut display_headers = HeaderMap::new();
-
-                                // Add headers from the request itself (e.g. Accept, Content-Type set by reqwest)
-                                for (name, value) in req.headers() {
-                                    display_headers.insert(name.clone(), value.clone());
-                                }
-
-                                // Add/overwrite with custom headers from the CLI for display
-                                for header_str in &cli.headers {
-                                    if let Some((key, value)) = header_str.split_once(": ")
-                                        && let Ok(name) = HeaderName::from_bytes(key.as_bytes())
-                                            && let Ok(val) = HeaderValue::from_str(value.trim()) {
-                                                display_headers.insert(name, val);
-                                            }
-                                }
-
-                                // Now print the combined headers
-                                for (name, value) in &display_headers {
-                                    raw_req.push_str(&format!("{}: {}\n", name, value.to_str().unwrap_or("[unprintable]")));
-                                }
-
-                                if let Some(body) = req.body().and_then(|b| b.as_bytes())
-                                    && !body.is_empty() {
-                                        raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(body)));
-                                    }
-                                Some(raw_req)
-                            },
-                            Err(_) => None,
-                        }
+                        request_builder
+                            .try_clone()
+                            .unwrap()
+                            .build()
+                            .ok()
+                            .map(|req| format_raw_request(&req, cli.http2, Some(&cli.headers)))
                     } else {
                         None
                     };
@@ -982,57 +1007,16 @@ impl ServerHandler for ReqsServerHandler {
 
             let url_str = normalize_url_scheme(&url_str);
 
-            let mut request_builder = match method.as_str() {
-                "POST" => client.post(&url_str),
-                "PUT" => client.put(&url_str),
-                "DELETE" => client.delete(&url_str),
-                "HEAD" => client.head(&url_str),
-                "PATCH" => client.patch(&url_str),
-                "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url_str),
-                _ => client.get(&url_str),
-            };
-
-            if let Some(body_content) = &body {
-                request_builder = request_builder.body(body_content.clone());
-            }
+            let request_builder = build_request(&client, &method, &url_str, &body);
 
             // Capture raw request if needed
             let raw_request = if include_req {
-                match request_builder.try_clone().unwrap().build() {
-                    Ok(req) => {
-                        let req_method = req.method();
-                        let url = req.url();
-                        let path_and_query = if let Some(query) = url.query() {
-                            format!("{}?{}", url.path(), query)
-                        } else {
-                            url.path().to_string()
-                        };
-                        let version = if http2 {
-                            HTTP_VERSION_2
-                        } else {
-                            HTTP_VERSION_1_1
-                        };
-                        let mut raw_req =
-                            format!("{} {} {}\n", req_method, path_and_query, version);
-                        raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
-
-                        for (name, value) in req.headers() {
-                            raw_req.push_str(&format!(
-                                "{}: {}\n",
-                                name,
-                                value.to_str().unwrap_or("[unprintable]")
-                            ));
-                        }
-
-                        if let Some(req_body) = req.body().and_then(|b| b.as_bytes())
-                            && !req_body.is_empty()
-                        {
-                            raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(req_body)));
-                        }
-                        Some(raw_req)
-                    }
-                    Err(_) => None,
-                }
+                request_builder
+                    .try_clone()
+                    .unwrap()
+                    .build()
+                    .ok()
+                    .map(|req| format_raw_request(&req, http2, None))
             } else {
                 None
             };
