@@ -19,6 +19,13 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::Mutex;
 use tokio::task;
 
+// Constants
+const DEFAULT_REDIRECT_LIMIT: usize = 10;
+const HTTP_VERSION_2: &str = "HTTP/2.0";
+const HTTP_VERSION_1_1: &str = "HTTP/1.1";
+const TITLE_SELECTOR: &str = "title";
+const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
+
 // MCP imports (only used when --mcp flag is set)
 use async_trait::async_trait;
 use rust_mcp_sdk::McpServer;
@@ -164,6 +171,291 @@ fn normalize_url_scheme(url_str: &str) -> String {
     format!("https://{}", trimmed_url)
 }
 
+async fn apply_random_delay(random_delay_str: &Option<String>) {
+    if let Some(delay_str) = random_delay_str {
+        let parts: Vec<&str> = delay_str.split(':').collect();
+        if parts.len() == 2 {
+            if let (Ok(min_delay), Ok(max_delay)) =
+                (parts[0].parse::<u64>(), parts[1].parse::<u64>())
+            {
+                if max_delay >= min_delay {
+                    let delay = {
+                        let mut rng = rand::thread_rng();
+                        rng.gen_range(min_delay..=max_delay)
+                    };
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                } else {
+                    eprintln!(
+                        "[Warning] Invalid --random-delay format: MAX must be greater than or equal to MIN. Got: {}",
+                        delay_str
+                    );
+                }
+            } else {
+                eprintln!(
+                    "[Warning] Invalid --random-delay format: Could not parse min/max values. Got: {}",
+                    delay_str
+                );
+            }
+        } else {
+            eprintln!(
+                "[Warning] Invalid --random-delay format. Expected MIN:MAX. Got: {}",
+                delay_str
+            );
+        }
+    }
+}
+
+async fn apply_rate_limit(rate_limit: Option<u64>, last_request_time: &Arc<Mutex<Instant>>) {
+    if let Some(rate_limit) = rate_limit {
+        let mut last_req_guard = last_request_time.lock().await;
+        let elapsed = last_req_guard.elapsed();
+        let min_delay_micros = MICROSECONDS_PER_SECOND / rate_limit;
+        if elapsed.as_micros() < min_delay_micros as u128 {
+            let sleep_duration =
+                Duration::from_micros(min_delay_micros - elapsed.as_micros() as u64);
+            tokio::time::sleep(sleep_duration).await;
+        }
+        *last_req_guard = Instant::now();
+    }
+}
+
+fn extract_title(html: &str) -> Option<String> {
+    let document = Html::parse_document(html);
+    let selector = Selector::parse(TITLE_SELECTOR).ok()?;
+    document.select(&selector).next().map(|t| t.inner_html())
+}
+
+fn should_filter_response(
+    status: u16,
+    body: &Option<String>,
+    filter_status: &[u16],
+    filter_string: &Option<String>,
+    filter_regex: &Option<Regex>,
+) -> bool {
+    // Filter by status codes
+    if !filter_status.is_empty() && !filter_status.contains(&status) {
+        return true;
+    }
+
+    // Filter by string in response body
+    if let Some(filter_str) = filter_string {
+        if let Some(body_text) = body {
+            if !body_text.contains(filter_str) {
+                return true;
+            }
+        } else {
+            return true;
+        }
+    }
+
+    // Filter by regex in response body
+    if let Some(re) = filter_regex {
+        if let Some(body_text) = body {
+            if !re.is_match(body_text) {
+                return true;
+            }
+        } else {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn parse_headers(headers: &[String]) -> HeaderMap {
+    let mut header_map = HeaderMap::new();
+    for header_str in headers {
+        if let Some((key, value)) = header_str.split_once(": ") {
+            if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
+                if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
+                    header_map.insert(header_name, header_value);
+                } else {
+                    eprintln!("[Warning] Invalid header value for key '{}'", key);
+                }
+            } else {
+                eprintln!("[Warning] Invalid header name: {}", key);
+            }
+        } else {
+            eprintln!(
+                "[Warning] Invalid header format. Expected 'Key: Value'. Got: {}",
+                header_str
+            );
+        }
+    }
+    header_map
+}
+
+fn parse_request_line(line: &str) -> (String, String, Option<String>) {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+
+    if parts.is_empty() {
+        return ("GET".to_string(), String::new(), None);
+    }
+
+    if parts.len() > 1
+        && ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH", "OPTIONS"]
+            .contains(&parts[0].to_uppercase().as_str())
+    {
+        let method = parts[0].to_uppercase();
+        let url = parts[1].to_string();
+        let body = if parts.len() > 2 {
+            Some(parts[2..].join(" "))
+        } else {
+            None
+        };
+        (method, url, body)
+    } else {
+        ("GET".to_string(), line.to_string(), None)
+    }
+}
+
+fn build_request(
+    client: &Client,
+    method: &str,
+    url: &str,
+    body: &Option<String>,
+) -> reqwest::RequestBuilder {
+    let mut request_builder = match method {
+        "POST" => client.post(url),
+        "PUT" => client.put(url),
+        "DELETE" => client.delete(url),
+        "HEAD" => client.head(url),
+        "PATCH" => client.patch(url),
+        "OPTIONS" => client.request(reqwest::Method::OPTIONS, url),
+        _ => client.get(url),
+    };
+
+    if let Some(body_content) = body {
+        request_builder = request_builder.body(body_content.clone());
+    }
+
+    request_builder
+}
+
+fn format_raw_request(
+    req: &reqwest::Request,
+    http2: bool,
+    custom_headers: Option<&[String]>,
+) -> String {
+    let method = req.method();
+    let url = req.url();
+    let path_and_query = if let Some(query) = url.query() {
+        format!("{}?{}", url.path(), query)
+    } else {
+        url.path().to_string()
+    };
+    let version = if http2 {
+        HTTP_VERSION_2
+    } else {
+        HTTP_VERSION_1_1
+    };
+    let mut raw_req = format!("{} {} {}\n", method, path_and_query, version);
+    raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
+
+    // Create a temporary HeaderMap for display to handle overrides correctly
+    let mut display_headers = HeaderMap::new();
+
+    // Add headers from the request itself
+    for (name, value) in req.headers() {
+        display_headers.insert(name.clone(), value.clone());
+    }
+
+    // Add/overwrite with custom headers if provided
+    if let Some(headers) = custom_headers {
+        display_headers.extend(parse_headers(headers));
+    }
+
+    // Print the combined headers
+    for (name, value) in &display_headers {
+        raw_req.push_str(&format!(
+            "{}: {}\n",
+            name,
+            value.to_str().unwrap_or("[unprintable]")
+        ));
+    }
+
+    if let Some(body) = req.body().and_then(|b| b.as_bytes())
+        && !body.is_empty()
+    {
+        raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(body)));
+    }
+
+    raw_req
+}
+
+struct ResponseInfo<'a> {
+    method: &'a str,
+    url: &'a str,
+    ip_addr: &'a str,
+    status: reqwest::StatusCode,
+    size: u64,
+    elapsed: Duration,
+    title: &'a Option<String>,
+}
+
+fn format_plain_output(
+    response: &ResponseInfo,
+    template: &Option<String>,
+    colored: bool,
+) -> String {
+    if let Some(template_str) = template {
+        let time_str = format!("{:?}", response.elapsed);
+        let mut output = template_str
+            .replace("%method", response.method)
+            .replace("%url", response.url)
+            .replace("%status", &response.status.to_string())
+            .replace("%code", &response.status.as_u16().to_string())
+            .replace("%size", &response.size.to_string())
+            .replace("%time", &time_str)
+            .replace("%ip", response.ip_addr)
+            .replace("%title", &response.title.clone().unwrap_or_default());
+        output.push('\n');
+        output
+    } else {
+        let title_str = if let Some(t) = response.title {
+            if colored {
+                format!(" | Title: {}", t.blue())
+            } else {
+                format!(" | Title: {}", t)
+            }
+        } else {
+            String::new()
+        };
+
+        if colored {
+            let status_str = response.status.to_string();
+            let colored_status = if response.status.is_success() {
+                status_str.green()
+            } else if response.status.is_redirection() {
+                status_str.yellow()
+            } else {
+                status_str.red()
+            };
+            format!(
+                "[{}] [{}] [{}] -> {} | Size: {} {}| Time: {:?}\n",
+                response.method.yellow(),
+                response.url.cyan(),
+                response.ip_addr.magenta(),
+                colored_status,
+                response.size.to_string().blue(),
+                title_str,
+                response.elapsed
+            )
+        } else {
+            format!(
+                "[{}] [{}] [{}] -> {} | Size: {} {}| Time: {:?}\n",
+                response.method,
+                response.url,
+                response.ip_addr,
+                response.status,
+                response.size,
+                title_str,
+                response.elapsed
+            )
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -191,30 +483,12 @@ async fn main() -> Result<()> {
     );
 
     let redirect_policy = if cli.follow_redirect {
-        Policy::limited(10) // Default reqwest behavior for following redirects
+        Policy::limited(DEFAULT_REDIRECT_LIMIT)
     } else {
         Policy::none()
     };
 
-    let mut default_headers = HeaderMap::new();
-    for header_str in &cli.headers {
-        if let Some((key, value)) = header_str.split_once(": ") {
-            if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
-                if let Ok(header_value) = HeaderValue::from_str(value.trim()) {
-                    default_headers.insert(header_name, header_value);
-                } else {
-                    eprintln!("[Warning] Invalid header value for key '{}'", key);
-                }
-            } else {
-                eprintln!("[Warning] Invalid header name: {}", key);
-            }
-        } else {
-            eprintln!(
-                "[Warning] Invalid header format. Expected 'Key: Value'. Got: {}",
-                header_str
-            );
-        }
-    }
+    let default_headers = parse_headers(&cli.headers);
 
     let mut client_builder = Client::builder()
         .timeout(Duration::from_secs(cli.timeout))
@@ -266,54 +540,15 @@ async fn main() -> Result<()> {
                     return;
                 }
 
-                if let Some(random_delay_str) = &cli.random_delay {
-                    let parts: Vec<&str> = random_delay_str.split(':').collect();
-                    if parts.len() == 2 {
-                        if let (Ok(min_delay), Ok(max_delay)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
-                            if max_delay >= min_delay {
-                                let delay = {
-                                    let mut rng = rand::thread_rng();
-                                    rng.gen_range(min_delay..=max_delay)
-                                };
-                                tokio::time::sleep(Duration::from_millis(delay)).await;
-                            } else {
-                                eprintln!("[Warning] Invalid --random-delay format: MAX must be greater than or equal to MIN. Got: {}", random_delay_str);
-                            }
-                        } else {
-                            eprintln!("[Warning] Invalid --random-delay format: Could not parse min/max values. Got: {}", random_delay_str);
-                        }
-                    } else {
-                        eprintln!("[Warning] Invalid --random-delay format. Expected MIN:MAX. Got: {}", random_delay_str);
-                    }
-                }
+                apply_random_delay(&cli.random_delay).await;
 
-                if let Some(rate_limit) = cli.rate_limit {
-                    let mut last_req_guard = last_request_time.lock().await;
-                    let elapsed = last_req_guard.elapsed();
-                    let min_delay_micros = 1_000_000 / rate_limit; // microseconds per request
-                    if elapsed.as_micros() < min_delay_micros as u128 {
-                        let sleep_duration = Duration::from_micros(min_delay_micros - elapsed.as_micros() as u64);
-                        tokio::time::sleep(sleep_duration).await;
-                    }
-                    *last_req_guard = Instant::now();
-                }
+                apply_rate_limit(cli.rate_limit, &last_request_time).await;
 
-                let parts: Vec<&str> = url.split_whitespace().collect();
+                let (method, url_str, body) = parse_request_line(&url);
 
-                let (method, url_str, body): (String, String, Option<String>) = if parts.is_empty() {
+                if url_str.is_empty() {
                     return;
-                } else if parts.len() > 1 && ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH", "OPTIONS"].contains(&parts[0].to_uppercase().as_str()) {
-                    let method = parts[0].to_uppercase();
-                    let url = parts[1].to_string();
-                    let body = if parts.len() > 2 {
-                        Some(parts[2..].join(" ").to_string())
-                    } else {
-                        None
-                    };
-                    (method, url, body)
-                } else {
-                    ("GET".to_string(), url, None) // url is the original String
-                };
+                }
 
                 let url_str = normalize_url_scheme(&url_str);
 
@@ -325,64 +560,15 @@ async fn main() -> Result<()> {
                         tokio::time::sleep(Duration::from_millis(cli.delay)).await;
                     }
 
-                    let mut request_builder = match method.as_str() {
-                        "POST" => client.post(&url_str),
-                        "PUT" => client.put(&url_str),
-                        "DELETE" => client.delete(&url_str),
-                        "HEAD" => client.head(&url_str),
-                        "PATCH" => client.patch(&url_str),
-                        "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url_str),
-                        _ => client.get(&url_str),
-                    };
-
-                    if let Some(body_content) = &body {
-                        request_builder = request_builder.body(body_content.clone());
-                    }
+                    let request_builder = build_request(&client, &method, &url_str, &body);
 
                     let req_for_display = if cli.include_req {
-                        match request_builder.try_clone().unwrap().build() {
-                            Ok(req) => {
-                                let method = req.method();
-                                let url = req.url();
-                                let path_and_query = if let Some(query) = url.query() {
-                                    format!("{}?{}", url.path(), query)
-                                } else {
-                                    url.path().to_string()
-                                };
-                                let version = if cli.http2 { "HTTP/2.0" } else { "HTTP/1.1" };
-                                let mut raw_req = format!("{} {} {}\n", method, path_and_query, version);
-                                raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
-
-                                // Create a temporary HeaderMap for display to handle overrides correctly
-                                let mut display_headers = HeaderMap::new();
-
-                                // Add headers from the request itself (e.g. Accept, Content-Type set by reqwest)
-                                for (name, value) in req.headers() {
-                                    display_headers.insert(name.clone(), value.clone());
-                                }
-
-                                // Add/overwrite with custom headers from the CLI for display
-                                for header_str in &cli.headers {
-                                    if let Some((key, value)) = header_str.split_once(": ")
-                                        && let Ok(name) = HeaderName::from_bytes(key.as_bytes())
-                                            && let Ok(val) = HeaderValue::from_str(value.trim()) {
-                                                display_headers.insert(name, val);
-                                            }
-                                }
-
-                                // Now print the combined headers
-                                for (name, value) in &display_headers {
-                                    raw_req.push_str(&format!("{}: {}\n", name, value.to_str().unwrap_or("[unprintable]")));
-                                }
-
-                                if let Some(body) = req.body().and_then(|b| b.as_bytes())
-                                    && !body.is_empty() {
-                                        raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(body)));
-                                    }
-                                Some(raw_req)
-                            },
-                            Err(_) => None,
-                        }
+                        request_builder
+                            .try_clone()
+                            .unwrap()
+                            .build()
+                            .ok()
+                            .map(|req| format_raw_request(&req, cli.http2, Some(&cli.headers)))
                     } else {
                         None
                     };
@@ -402,53 +588,18 @@ async fn main() -> Result<()> {
                             };
 
                             let title = if cli.include_title {
-                                if let Some(body) = &body_text {
-                                    let document = Html::parse_document(body);
-                                    let selector = Selector::parse("title").unwrap();
-                                    document.select(&selector).next().map(|t| t.inner_html())
-                                } else {
-                                    None
-                                }
+                                body_text.as_ref().and_then(|body| extract_title(body))
                             } else {
                                 None
                             };
 
-                            let mut should_output = true;
-
-                            // Filter by status codes
-                            if !cli.filter_status.is_empty() && !cli.filter_status.contains(&status.as_u16()) {
-                                should_output = false;
-                            }
-
-                            // Filter by string in response body
-                            if should_output { // Only check if still eligible
-                                if let Some(filter_str) = &cli.filter_string {
-                                    if let Some(body) = &body_text {
-                                        if !body.contains(filter_str) {
-                                            should_output = false;
-                                        }
-                                    } else {
-                                        // If body is not included but filter_string is set, don't output
-                                        should_output = false;
-                                    }
-                                }
-                            }
-
-                            // Filter by regex in response body
-                            if should_output { // Only check if still eligible
-                                if let Some(re) = parsed_filter_regex.as_ref() {
-                                    if let Some(body) = &body_text {
-                                        if !re.is_match(body) {
-                                            should_output = false;
-                                        }
-                                    } else {
-                                        // If body is not included but filter_regex is set, don't output
-                                        should_output = false;
-                                    }
-                                }
-                            }
-
-                            if !should_output {
+                            if should_filter_response(
+                                status.as_u16(),
+                                &body_text,
+                                &cli.filter_status,
+                                &cli.filter_string,
+                                parsed_filter_regex.as_ref(),
+                            ) {
                                 return; // Skip output if it doesn't pass filters
                             }
 
@@ -475,65 +626,30 @@ async fn main() -> Result<()> {
 
                             let output_str = match cli.format {
                                 OutputFormat::Plain => {
-                                    let mut s = String::new();
-                                    if let Some(template) = &cli.strf {
-                                        let time_str = format!("{:?}", elapsed);
-                                        s = template
-                                            .replace("%method", &method)
-                                            .replace("%url", &url_str)
-                                            .replace("%status", &status.to_string())
-                                            .replace("%code", &status.as_u16().to_string())
-                                            .replace("%size", &size.to_string())
-                                            .replace("%time", &time_str)
-                                            .replace("%ip", &ip_addr)
-                                            .replace("%title", &title.clone().unwrap_or_default());
-                                        s.push('\n');
-                                    } else {
-                                        let title_str = if let Some(t) = &title {
-                                            format!(" | Title: {}", t.blue())
-                                        } else {
-                                            "".to_string()
-                                        };
-
-                                        if cli.output.is_none() && !cli.no_color {
-                                            let status_str = status.to_string();
-                                            let colored_status = if status.is_success() {
-                                                status_str.green()
-                                            } else if status.is_redirection() {
-                                                status_str.yellow()
-                                            } else {
-                                                status_str.red()
-                                            };
-                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
-                                                method.yellow(),
-                                                url_str.cyan(),
-                                                ip_addr.magenta(),
-                                                colored_status,
-                                                size.to_string().blue(),
-                                                title_str,
-                                                elapsed
-                                            ));
-                                        } else {
-                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
-                                                method,
-                                                url_str,
-                                                ip_addr,
-                                                status,
-                                                size,
-                                                title_str,
-                                                elapsed
-                                            ));
-                                        }
-                                    }
+                                    let response_info = ResponseInfo {
+                                        method: &method,
+                                        url: &url_str,
+                                        ip_addr: &ip_addr,
+                                        status,
+                                        size,
+                                        elapsed,
+                                        title: &title,
+                                    };
+                                    let mut s = format_plain_output(
+                                        &response_info,
+                                        &cli.strf,
+                                        cli.output.is_none() && !cli.no_color,
+                                    );
                                     if let Some(raw_req) = req_for_display {
                                         s.push_str(&format!("[Raw Request]\n{}\n", raw_req));
                                     }
                                     if cli.include_res
-                                        && let Some(body) = body_text {
-                                            s.push_str(&format!("[Response Body]\n{}\n", body));
-                                        }
+                                        && let Some(body) = &body_text
+                                    {
+                                        s.push_str(&format!("[Response Body]\n{}\n", body));
+                                    }
                                     s
-                                },
+                                }
                                 OutputFormat::Jsonl => {
                                     let mut json_output = json!({
                                         "method": method,
@@ -866,32 +982,14 @@ impl ServerHandler for ReqsServerHandler {
 
         // Create HTTP client using the parameters from the tool call (with CLI defaults as fallback)
         let redirect_policy = if follow_redirect {
-            Policy::limited(10)
+            Policy::limited(DEFAULT_REDIRECT_LIMIT)
         } else {
             Policy::none()
         };
 
-        let mut default_headers = HeaderMap::new();
-
-        // First, apply headers from CLI (global default)
-        for header_str in &self.cli.headers {
-            if let Some((key, value)) = header_str.split_once(": ")
-                && let Ok(header_name) = HeaderName::from_bytes(key.as_bytes())
-                && let Ok(header_value) = HeaderValue::from_str(value.trim())
-            {
-                default_headers.insert(header_name, header_value);
-            }
-        }
-
-        // Then, apply custom headers from the tool call (overrides CLI headers)
-        for header_str in &custom_headers {
-            if let Some((key, value)) = header_str.split_once(": ")
-                && let Ok(header_name) = HeaderName::from_bytes(key.as_bytes())
-                && let Ok(header_value) = HeaderValue::from_str(value.trim())
-            {
-                default_headers.insert(header_name, header_value);
-            }
-        }
+        // First, apply headers from CLI (global default), then custom headers from tool call (overrides)
+        let mut default_headers = parse_headers(&self.cli.headers);
+        default_headers.extend(parse_headers(&custom_headers));
 
         let mut client_builder = Client::builder()
             .timeout(Duration::from_secs(self.cli.timeout))
@@ -939,75 +1037,24 @@ impl ServerHandler for ReqsServerHandler {
                 continue;
             }
 
-            let parts: Vec<&str> = req_str.split_whitespace().collect();
+            let (method, url_str, body) = parse_request_line(req_str);
 
-            let (method, url_str, body): (String, String, Option<String>) = if parts.is_empty() {
+            if url_str.is_empty() {
                 continue;
-            } else if parts.len() > 1
-                && ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH", "OPTIONS"]
-                    .contains(&parts[0].to_uppercase().as_str())
-            {
-                let method = parts[0].to_uppercase();
-                let url = parts[1].to_string();
-                let body = if parts.len() > 2 {
-                    Some(parts[2..].join(" ").to_string())
-                } else {
-                    None
-                };
-                (method, url, body)
-            } else {
-                ("GET".to_string(), req_str.to_string(), None)
-            };
+            }
 
             let url_str = normalize_url_scheme(&url_str);
 
-            let mut request_builder = match method.as_str() {
-                "POST" => client.post(&url_str),
-                "PUT" => client.put(&url_str),
-                "DELETE" => client.delete(&url_str),
-                "HEAD" => client.head(&url_str),
-                "PATCH" => client.patch(&url_str),
-                "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url_str),
-                _ => client.get(&url_str),
-            };
-
-            if let Some(body_content) = &body {
-                request_builder = request_builder.body(body_content.clone());
-            }
+            let request_builder = build_request(&client, &method, &url_str, &body);
 
             // Capture raw request if needed
             let raw_request = if include_req {
-                match request_builder.try_clone().unwrap().build() {
-                    Ok(req) => {
-                        let req_method = req.method();
-                        let url = req.url();
-                        let path_and_query = if let Some(query) = url.query() {
-                            format!("{}?{}", url.path(), query)
-                        } else {
-                            url.path().to_string()
-                        };
-                        let version = if http2 { "HTTP/2.0" } else { "HTTP/1.1" };
-                        let mut raw_req =
-                            format!("{} {} {}\n", req_method, path_and_query, version);
-                        raw_req.push_str(&format!("Host: {}\n", url.host_str().unwrap_or("")));
-
-                        for (name, value) in req.headers() {
-                            raw_req.push_str(&format!(
-                                "{}: {}\n",
-                                name,
-                                value.to_str().unwrap_or("[unprintable]")
-                            ));
-                        }
-
-                        if let Some(req_body) = req.body().and_then(|b| b.as_bytes())
-                            && !req_body.is_empty()
-                        {
-                            raw_req.push_str(&format!("\n{}", String::from_utf8_lossy(req_body)));
-                        }
-                        Some(raw_req)
-                    }
-                    Err(_) => None,
-                }
+                request_builder
+                    .try_clone()
+                    .unwrap()
+                    .build()
+                    .ok()
+                    .map(|req| format_raw_request(&req, http2, None))
             } else {
                 None
             };
@@ -1031,36 +1078,13 @@ impl ServerHandler for ReqsServerHandler {
                             None
                         };
 
-                    let mut should_output = true;
-
-                    // Filter by status codes
-                    if !filter_status.is_empty() && !filter_status.contains(&status.as_u16()) {
-                        should_output = false;
-                    }
-
-                    // Filter by string in response body
-                    if should_output && let Some(filter_str) = &filter_string {
-                        if let Some(body) = &body_text {
-                            if !body.contains(filter_str) {
-                                should_output = false;
-                            }
-                        } else {
-                            should_output = false;
-                        }
-                    }
-
-                    // Filter by regex in response body
-                    if should_output && let Some(re) = &filter_regex {
-                        if let Some(body) = &body_text {
-                            if !re.is_match(body) {
-                                should_output = false;
-                            }
-                        } else {
-                            should_output = false;
-                        }
-                    }
-
-                    if !should_output {
+                    if should_filter_response(
+                        status.as_u16(),
+                        &body_text,
+                        &filter_status,
+                        &filter_string,
+                        &filter_regex,
+                    ) {
                         continue; // Skip this result
                     }
 
