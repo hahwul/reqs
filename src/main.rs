@@ -383,6 +383,79 @@ fn format_raw_request(
     raw_req
 }
 
+struct ResponseInfo<'a> {
+    method: &'a str,
+    url: &'a str,
+    ip_addr: &'a str,
+    status: reqwest::StatusCode,
+    size: u64,
+    elapsed: Duration,
+    title: &'a Option<String>,
+}
+
+fn format_plain_output(
+    response: &ResponseInfo,
+    template: &Option<String>,
+    colored: bool,
+) -> String {
+    if let Some(template_str) = template {
+        let time_str = format!("{:?}", response.elapsed);
+        let mut output = template_str
+            .replace("%method", response.method)
+            .replace("%url", response.url)
+            .replace("%status", &response.status.to_string())
+            .replace("%code", &response.status.as_u16().to_string())
+            .replace("%size", &response.size.to_string())
+            .replace("%time", &time_str)
+            .replace("%ip", response.ip_addr)
+            .replace("%title", &response.title.clone().unwrap_or_default());
+        output.push('\n');
+        output
+    } else {
+        let title_str = if let Some(t) = response.title {
+            if colored {
+                format!(" | Title: {}", t.blue())
+            } else {
+                format!(" | Title: {}", t)
+            }
+        } else {
+            String::new()
+        };
+
+        if colored {
+            let status_str = response.status.to_string();
+            let colored_status = if response.status.is_success() {
+                status_str.green()
+            } else if response.status.is_redirection() {
+                status_str.yellow()
+            } else {
+                status_str.red()
+            };
+            format!(
+                "[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
+                response.method.yellow(),
+                response.url.cyan(),
+                response.ip_addr.magenta(),
+                colored_status,
+                response.size.to_string().blue(),
+                title_str,
+                response.elapsed
+            )
+        } else {
+            format!(
+                "[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
+                response.method,
+                response.url,
+                response.ip_addr,
+                response.status,
+                response.size,
+                title_str,
+                response.elapsed
+            )
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -553,65 +626,30 @@ async fn main() -> Result<()> {
 
                             let output_str = match cli.format {
                                 OutputFormat::Plain => {
-                                    let mut s = String::new();
-                                    if let Some(template) = &cli.strf {
-                                        let time_str = format!("{:?}", elapsed);
-                                        s = template
-                                            .replace("%method", &method)
-                                            .replace("%url", &url_str)
-                                            .replace("%status", &status.to_string())
-                                            .replace("%code", &status.as_u16().to_string())
-                                            .replace("%size", &size.to_string())
-                                            .replace("%time", &time_str)
-                                            .replace("%ip", &ip_addr)
-                                            .replace("%title", &title.clone().unwrap_or_default());
-                                        s.push('\n');
-                                    } else {
-                                        let title_str = if let Some(t) = &title {
-                                            format!(" | Title: {}", t.blue())
-                                        } else {
-                                            "".to_string()
-                                        };
-
-                                        if cli.output.is_none() && !cli.no_color {
-                                            let status_str = status.to_string();
-                                            let colored_status = if status.is_success() {
-                                                status_str.green()
-                                            } else if status.is_redirection() {
-                                                status_str.yellow()
-                                            } else {
-                                                status_str.red()
-                                            };
-                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
-                                                method.yellow(),
-                                                url_str.cyan(),
-                                                ip_addr.magenta(),
-                                                colored_status,
-                                                size.to_string().blue(),
-                                                title_str,
-                                                elapsed
-                                            ));
-                                        } else {
-                                            s.push_str(&format!("[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
-                                                method,
-                                                url_str,
-                                                ip_addr,
-                                                status,
-                                                size,
-                                                title_str,
-                                                elapsed
-                                            ));
-                                        }
-                                    }
+                                    let response_info = ResponseInfo {
+                                        method: &method,
+                                        url: &url_str,
+                                        ip_addr: &ip_addr,
+                                        status,
+                                        size,
+                                        elapsed,
+                                        title: &title,
+                                    };
+                                    let mut s = format_plain_output(
+                                        &response_info,
+                                        &cli.strf,
+                                        cli.output.is_none() && !cli.no_color,
+                                    );
                                     if let Some(raw_req) = req_for_display {
                                         s.push_str(&format!("[Raw Request]\n{}\n", raw_req));
                                     }
                                     if cli.include_res
-                                        && let Some(body) = body_text {
-                                            s.push_str(&format!("[Response Body]\n{}\n", body));
-                                        }
+                                        && let Some(body) = &body_text
+                                    {
+                                        s.push_str(&format!("[Response Body]\n{}\n", body));
+                                    }
                                     s
-                                },
+                                }
                                 OutputFormat::Jsonl => {
                                     let mut json_output = json!({
                                         "method": method,
