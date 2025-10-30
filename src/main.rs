@@ -432,7 +432,7 @@ fn format_plain_output(
                 status_str.red()
             };
             format!(
-                "[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
+                "[{}] [{}] [{}] -> {} | Size: {} {}| Time: {:?}\n",
                 response.method.yellow(),
                 response.url.cyan(),
                 response.ip_addr.magenta(),
@@ -443,7 +443,7 @@ fn format_plain_output(
             )
         } else {
             format!(
-                "[{}] [{}] [{}] -> {} | Size: {}{}| Time: {:?}\n",
+                "[{}] [{}] [{}] -> {} | Size: {} {}| Time: {:?}\n",
                 response.method,
                 response.url,
                 response.ip_addr,
