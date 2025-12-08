@@ -11,6 +11,10 @@ cta_buttons = [
     { text = "View on GitHub", url = "https://github.com/hahwul/reqs", style = "secondary" },
 ]
 
+[extra.features_section]
+title = "Essential Features"
+description = "Discover reqs's essential features"
+
 [[extra.features]]
 title = "Concurrent Request Processing"
 desc = "Send HTTP requests to multiple URLs concurrently with customizable concurrency levels for optimal performance."
