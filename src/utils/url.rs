@@ -5,8 +5,8 @@ pub fn normalize_url_scheme(url_str: &str) -> String {
         return trimmed_url.to_string();
     }
 
-    if let Some(pos) = trimmed_url.rfind(':')
-        && let Some(port_str) = trimmed_url.get(pos + 1..)
+    if let Some(colon_pos) = trimmed_url.rfind(':')
+        && let Some(port_str) = trimmed_url.get(colon_pos + 1..)
     {
         // Ensure what follows ':' is a valid port number and not part of the path
         if !port_str.is_empty() && port_str.chars().all(char::is_numeric) {

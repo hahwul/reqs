@@ -14,10 +14,7 @@ pub async fn apply_random_delay(random_delay_str: &Option<String>) {
                 (parts[0].parse::<u64>(), parts[1].parse::<u64>())
             {
                 if max_delay >= min_delay {
-                    let delay = {
-                        let mut rng = rand::thread_rng();
-                        rng.gen_range(min_delay..=max_delay)
-                    };
+                    let delay = rand::thread_rng().gen_range(min_delay..=max_delay);
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 } else {
                     eprintln!(

@@ -461,5 +461,9 @@ fn create_tool_input_schema() -> rust_mcp_sdk::schema::ToolInputSchema {
     headers_prop.insert("items".to_string(), json!(headers_items));
     properties.insert("headers".to_string(), headers_prop);
 
-    rust_mcp_sdk::schema::ToolInputSchema::new(vec!["requests".to_string()], Some(properties))
+    const REQUIRED_FIELDS: &[&str] = &["requests"];
+    rust_mcp_sdk::schema::ToolInputSchema::new(
+        REQUIRED_FIELDS.iter().map(|s| s.to_string()).collect(),
+        Some(properties),
+    )
 }
