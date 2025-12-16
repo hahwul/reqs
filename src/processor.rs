@@ -327,7 +327,10 @@ fn format_response_output(cli: &Cli, data: &ResponseData) -> String {
                 time_str
             );
             if cli.include_title {
-                csv_line.push_str(&format!(",\"{}\"", data.title.as_deref().unwrap_or_default()));
+                csv_line.push_str(&format!(
+                    ",\"{}\"",
+                    data.title.as_deref().unwrap_or_default()
+                ));
             }
             csv_line.push('\n');
             csv_line
