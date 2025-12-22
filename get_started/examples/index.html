@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: #0f172a;">
+
+<head>
+    
+        
+    
+    
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Resource Hints for better performance -->
+    
+
+    <!-- Initialize theme and brightness before CSS loads to prevent FOUC -->
+    <script>
+        (function() {
+            // Theme mapping - maps user-friendly names to actual DaisyUI theme names
+            var themeMapping = { "goyo-dark": "night", "goyo-light": "lofi" };
+            
+            
+            
+            
+                
+                
+                
+                
+            
+            // Get default values from config
+            var defaultColorset = "dark";
+            var darkBrightness = "normal";
+            var lightBrightness = "normal";
+            var themeMap = { "dark": "goyo-dark", "light": "goyo-light" };
+            var fallbackTheme = themeMap[defaultColorset] || "goyo-dark";
+            
+            // Expose brightness config for global use (e.g., goyo.js)
+            window.darkBrightness = darkBrightness;
+            window.lightBrightness = lightBrightness;
+            
+            // Get theme from localStorage or use fallback
+            var currentUserTheme = localStorage.getItem('theme') || fallbackTheme;
+            var actualTheme = themeMapping[currentUserTheme] || currentUserTheme;
+            
+            // Determine brightness based on current theme
+            var currentBrightness = (currentUserTheme === "goyo-dark") ? darkBrightness : lightBrightness;
+            
+            // Set theme and brightness attributes immediately
+            document.documentElement.setAttribute("data-theme", actualTheme);
+            document.documentElement.setAttribute("data-brightness", currentBrightness);
+        })();
+    </script>
+
+    <style>
+        
+        
+        
+            
+            
+            
+        
+        
+            
+            @font-face {
+                font-family: "Pretendard-Regular";
+                src: url('https://reqs.hahwul.com/fonts/Pretendard-Regular.woff') format("woff");
+                font-weight: 400;
+                font-style: normal;
+                font-display: swap;
+            }
+            body {
+                font-family: "Pretendard-Regular", sans-serif;
+            }
+        
+    </style>
+
+    
+        
+    
+
+    <title>Examples | Reqs</title>
+
+    
+    
+
+      <!-- SEO: Open Graph / Twitter Card -->
+      <meta property="og:title" content="Examples | Reqs" />
+      <meta property="og:description" content="" />
+      <meta property="og:url" content="https://reqs.hahwul.com" />
+      <meta property="og:type" content="website" />
+      
+      <meta property="og:image" content="https://reqs.hahwul.com/images/preview.jpg" />
+      
+
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="Examples" />
+      <meta name="twitter:description" content="" />
+      
+      
+      
+          
+          
+      
+      
+      <meta name="twitter:site" content="@hahwul" />
+      
+      
+      <meta name="twitter:creator" content="@hahwul" />
+      
+      
+      <meta name="twitter:image" content="https://reqs.hahwul.com/images/preview.jpg" />
+      
+
+      <!-- Browser address bar color -->
+      <meta name="theme-color" content="#0f172a">
+
+      <!-- CSS -->
+    <link rel="stylesheet" href="https://reqs.hahwul.com/css/main.css">
+    <link rel="stylesheet" href="https://reqs.hahwul.com/css/font-awesome.min.css">
+    
+    <!-- Preload critical fonts -->
+    <link rel="preload" href="https://reqs.hahwul.com/fonts/Pretendard-Regular.woff" as="font" type="font/woff" crossorigin>
+
+    <!-- Defer non-critical scripts -->
+    <script defer src="https://reqs.hahwul.com/js/copy_code.js"></script>
+    <script defer src="https://reqs.hahwul.com/js/copy_heading_link.js"></script>
+    
+    <!-- Lazy load Mermaid and KaTeX - only when needed -->
+    <script>
+        // Lazy load KaTeX and Mermaid when needed
+        window.addEventListener('DOMContentLoaded', function() {
+            // Check for both KaTeX inline and block elements in one pass
+            var katexInlineElements = document.querySelectorAll('.katex-inline');
+            var katexBlockElements = document.querySelectorAll('.katex-block');
+            var hasKatex = katexInlineElements.length > 0 || katexBlockElements.length > 0;
+            var hasMermaid = document.querySelector('.mermaid');
+            
+            // Load KaTeX if math elements are present
+            if (hasKatex) {
+                // Load KaTeX CSS first
+                var katexCSS = document.createElement('link');
+                katexCSS.rel = 'stylesheet';
+                katexCSS.href = 'https://reqs.hahwul.com/css/katex.min.css';
+                document.head.appendChild(katexCSS);
+                
+                // Load KaTeX JS
+                var katexScript = document.createElement('script');
+                katexScript.src = 'https://reqs.hahwul.com/js/katex.min.js';
+                katexScript.onload = function() {
+                    // Render inline elements
+                    katexInlineElements.forEach(function(elem) {
+                        var texContent = elem.textContent || elem.innerText;
+                        try {
+                            katex.render(texContent, elem, { 
+                                throwOnError: false,
+                                displayMode: false
+                            });
+                        } catch(e) {
+                            console.error('KaTeX render error:', e);
+                        }
+                    });
+                    
+                    // Render block elements
+                    katexBlockElements.forEach(function(elem) {
+                        var texContent = elem.textContent || elem.innerText;
+                        try {
+                            katex.render(texContent, elem, { 
+                                throwOnError: false,
+                                displayMode: true
+                            });
+                        } catch(e) {
+                            console.error('KaTeX render error:', e);
+                        }
+                    });
+                };
+                document.head.appendChild(katexScript);
+            }
+            
+            // Load Mermaid if diagram elements are present
+            if (hasMermaid) {
+                var mermaidScript = document.createElement('script');
+                mermaidScript.src = 'https://reqs.hahwul.com/js/mermaid.min.js';
+                mermaidScript.onload = function() {
+                    // Initialize Mermaid after loading
+                    if (typeof window.initMermaid === 'function') {
+                        window.initMermaid();
+                    }
+                };
+                document.head.appendChild(mermaidScript);
+            }
+        });
+    </script>
+
+    
+    
+</head>
+<body>
+    
+
+<!-- Search Modal -->
+<input type="checkbox" id="search-modal" class="modal-toggle" />
+<div class="modal modal-middle">
+    <div class="modal-box relative max-w-2xl p-0 bg-base-100 shadow-2xl">
+        <label for="search-modal" class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 z-10">✕</label>
+        <div class="search-container">
+            <!-- Search Input Container -->
+            <div class="search-input-container px-6 pt-6 pb-4 border-b border-base-300/30">
+                <div class="relative">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="search-icon absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-base-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input id="search" type="search" placeholder="Search documentation..." class="search-input w-full pl-12 pr-4 py-3 text-base bg-transparent border-0 focus:outline-none focus:ring-0 text-base-content placeholder:text-base-content/40">
+                </div>
+            </div>
+            <!-- Search Results Container -->
+            <div class="search-results-container px-2 py-2 h-96 overflow-y-auto">
+                <div class="search-results__header px-4 py-2 text-xs text-base-content/60"></div>
+                <ul class="search-results__items space-y-1"></ul>
+            </div>
+            <!-- Search Footer -->
+            <div class="search-footer px-6 py-3 border-t border-base-300/30 flex items-center justify-end gap-4 text-xs text-base-content/50">
+                <div class="flex items-center gap-1">
+                    <kbd class="kbd kbd-xs">↑</kbd>
+                    <kbd class="kbd kbd-xs">↓</kbd>
+                    <span>to navigate</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <kbd class="kbd kbd-xs">↵</kbd>
+                    <span>to select</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <kbd class="kbd kbd-xs">esc</kbd>
+                    <span>to close</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+    <div class="drawer lg:drawer-open">
+        <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
+        <div class="drawer-content flex flex-col pt-16">
+            
+
+
+
+
+
+    
+    
+    
+    
+    
+    
+
+
+
+
+<div class="navbar opacity-95 fixed top-0 left-0 right-0 z-50 h-16 border-b border-gray-500/15 backdrop-blur-3xl">
+    <!-- Mobile hamburger -->
+    <div class="flex-none lg:hidden">
+        <label for="my-drawer-2" class="btn btn-square btn-ghost">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-5 h-5 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </label>
+    </div>
+    <!-- Logo -->
+    <div class="flex-1">
+        <a href="/" class="btn btn-ghost hover:animate-pulse hover:bg-transparent hover:border-transparent normal-case text-xl" style="background: linear-gradient(135deg, #9ca3af, #6b7280); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: bold; font-size: 1.5rem;">
+            
+                
+                <img 
+                    src="https://reqs.hahwul.com/images/logo.png" 
+                    alt="Reqs" 
+                    class="h-18 w-auto"
+                    
+                />
+            
+        </a>
+    </div>
+    <!-- Desktop Menu -->
+    <div class="flex-none hidden lg:flex">
+        <ul class="menu menu-horizontal px-1 items-center">
+            
+            
+            
+                
+                    
+                        <li>
+                            <a class="btn btn-ghost hover:no-underline" href="/get_started/installation">
+                                <i class="fa-solid fa-book"></i>
+                                Documents
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li>
+                            <a class="btn btn-ghost hover:no-underline" href="https://github.com/hahwul/reqs">
+                                <i class="fa-brands fa-github"></i>
+                                GitHub
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="dropdown dropdown-end">
+                            <div tabindex="0" role="button" class="btn btn-ghost">
+                                <i class="fa-solid fa-link"></i>
+                                Links
+                                <svg class="inline w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                            <ul tabindex="0" class="dropdown-content menu bg-base-100 border border-gray-500/15 rounded-box z-1 p-2 shadow-sm">
+                                
+                                    <li>
+                                        <a class="btn btn-ghost hover:no-underline" href="https://crates.io/crates/reqs">
+                                            <i class="fa-solid fa-box"></i>
+                                            Crates
+                                        </a>
+                                    </li>
+                                
+                                    <li>
+                                        <a class="btn btn-ghost hover:no-underline" href="https://www.hahwul.com">
+                                            <i class="fa-solid fa-fire-flame-curved"></i>
+                                            Creator Blog
+                                        </a>
+                                    </li>
+                                
+                            </ul>
+                        </li>
+                    
+                
+            
+            
+
+            
+            
+            
+                
+            
+            
+            <li>
+                <label class="swap swap-rotate btn btn-ghost">
+                  <input type="checkbox" class="theme-controller" value="night" aria-labelledby="swap color"/>
+                  <svg class="swap-off h-5 w-5 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5.64,17l-.71.71a1,1,0,0,0,0,1.41,1,1,0,0,0,1.41,0l.71-.71A1,1,0,0,0,5.64,17ZM5,12a1,1,0,0,0-1-1H3a1,1,0,0,0,0,2H4A1,1,0,0,0,5,12Zm7-7a1,1,0,0,0,1-1V3a1,1,0,0,0-2,0V4A1,1,0,0,0,12,5ZM5.64,7.05a1,1,0,0,0,.7.29,1,1,0,0,0,.71-.29,1,1,0,0,0,0-1.41l-.71-.71A1,1,0,0,0,4.93,6.34Zm12,.29a1,1,0,0,0,.7-.29l.71-.71a1,1,0,1,0-1.41-1.41L17,5.64a1,1,0,0,0,0,1.41A1,1,0,0,0,17.66,7.34ZM21,11H20a1,1,0,0,0,0,2h1a1,1,0,0,0,0-2Zm-9,8a1,1,0,0,0-1,1v1a1,1,0,0,0,2,0V20A1,1,0,0,0,12,19ZM18.36,17A1,1,0,0,0,17,18.36l.71.71a1,1,0,0,0,1.41,0,1,1,0,0,0,0-1.41ZM12,6.5A5.5,5.5,0,1,0,17.5,12,5.51,5.51,0,0,0,12,6.5Zm0,9A3.5,3.5,0,1,1,15.5,12,3.5,3.5,0,0,1,12,15.5Z" /></svg>
+                  <svg class="swap-on h-5 w-5 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21.64,13a1,1,0,0,0-1.05-.14,8.05,8.05,0,0,1-3.37.73A8.15,8.15,0,0,1,9.08,5.49a8.59,8.59,0,0,1,.25-2A1,1,0,0,0,8,2.36,10.14,10.14,0,1,0,22,14.05,1,1,0,0,0,21.64,13Zm-9.5,6.69A8.14,8.14,0,0,1,7.08,5.22v.27A10.15,10.15,0,0,0,17.22,15.63a9.79,9.79,0,0,0,2.1-.22A8.11,8.11,0,0,1,12.14,19.73Z" /></svg>
+                </label>
+            </li>
+            
+
+        </ul>
+    </div>
+</div>
+
+
+            
+            
+            
+            
+                
+            
+            
+            <div class="p-8 w-full flex justify-center">
+                <div class="w-full max-w-7xl lg:grid lg:grid-cols-[1fr_250px] lg:gap-8">
+                    <main class="prose w-full">
+                        
+    <div class="mb-12 pb-4 border-b border-gray-500/15">
+        <h1 class="flex items-center gap-3">
+            Examples
+            
+        </h1>
+        <p class="text-gray-500"></p>
+    </div>
+    <p>This page provides practical examples and common use cases for Reqs.</p>
+<h2 id="basic-examples">Basic Examples</h2>
+<h3 id="test-a-single-url">Test a Single URL</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot; | </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<h3 id="test-multiple-urls">Test Multiple URLs</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat </span><span>&lt;&lt; </span><span style="color:#b48ead;">EOF </span><span>| </span><span style="color:#bf616a;">reqs
+</span><span style="color:#a3be8c;">https://example.com
+</span><span style="color:#a3be8c;">https://github.com
+</span><span style="color:#a3be8c;">https://www.hahwul.com
+</span><span style="color:#b48ead;">EOF
+</span></code></pre>
+<h3 id="test-urls-from-a-file">Test URLs from a File</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<h2 id="output-format-examples">Output Format Examples</h2>
+<h3 id="plain-text-output">Plain Text Output</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot; | </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<p>Output:</p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>[200] https://example.com (42ms)
+</span></code></pre>
+<h3 id="json-lines-output">JSON Lines Output</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot; | </span><span style="color:#bf616a;">reqs --format</span><span> jsonl
+</span></code></pre>
+<p>Output:</p>
+<pre data-lang="json" style="background-color:#2b303b;color:#c0c5ce;" class="language-json "><code class="language-json" data-lang="json"><span>{&quot;</span><span style="color:#a3be8c;">content_length</span><span>&quot;:</span><span style="color:#d08770;">1256</span><span>,&quot;</span><span style="color:#a3be8c;">method</span><span>&quot;:&quot;</span><span style="color:#a3be8c;">GET</span><span>&quot;,&quot;</span><span style="color:#a3be8c;">response_time_ms</span><span>&quot;:</span><span style="color:#d08770;">42</span><span>,&quot;</span><span style="color:#a3be8c;">status_code</span><span>&quot;:</span><span style="color:#d08770;">200</span><span>,&quot;</span><span style="color:#a3be8c;">url</span><span>&quot;:&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot;}
+</span></code></pre>
+<h3 id="csv-output">CSV Output</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot; | </span><span style="color:#bf616a;">reqs --format</span><span> csv
+</span></code></pre>
+<p>Output:</p>
+<pre data-lang="csv" style="background-color:#2b303b;color:#c0c5ce;" class="language-csv "><code class="language-csv" data-lang="csv"><span style="color:#b48ead;">url</span><span>,</span><span style="color:#b48ead;">method</span><span>,</span><span style="color:#b48ead;">status_code</span><span>,</span><span style="color:#b48ead;">content_length</span><span>,</span><span style="color:#b48ead;">response_time_ms
+</span><span style="color:#b48ead;">https://example.com</span><span>,</span><span style="color:#b48ead;">GET</span><span>,</span><span style="color:#d08770;">200</span><span>,</span><span style="color:#d08770;">1256</span><span>,</span><span style="color:#d08770;">42
+</span></code></pre>
+<h2 id="http-method-examples">HTTP Method Examples</h2>
+<h3 id="get-request">GET Request</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://api.example.com/users</span><span>&quot; | </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<h3 id="post-request">POST Request</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">POST https://api.example.com/users {</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">name</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">:</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">John</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">,</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">email</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">:</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">john@example.com</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">}</span><span>&quot; | </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<h3 id="put-request">PUT Request</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">PUT https://api.example.com/users/1 {</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">name</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">:</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">Jane</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#a3be8c;">}</span><span>&quot; | </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<h3 id="delete-request">DELETE Request</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">DELETE https://api.example.com/users/1</span><span>&quot; | </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<h2 id="filtering-examples">Filtering Examples</h2>
+<h3 id="filter-by-status-code">Filter by Status Code</h3>
+<p>Show only successful (200) responses:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs --filter-status</span><span> 200
+</span></code></pre>
+<p>Show only client errors (4xx):</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs --filter-status</span><span> 400</span><span style="color:#bf616a;"> --filter-status</span><span> 404</span><span style="color:#bf616a;"> --filter-status</span><span> 403
+</span></code></pre>
+<h3 id="filter-by-response-content">Filter by Response Content</h3>
+<p>Find pages containing "login":</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs --filter-string </span><span>&quot;</span><span style="color:#a3be8c;">login</span><span>&quot;
+</span></code></pre>
+<h3 id="filter-with-regex">Filter with Regex</h3>
+<p>Find pages with email addresses:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs --filter-regex </span><span>&quot;</span><span style="color:#a3be8c;">[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}</span><span>&quot;
+</span></code></pre>
+<h2 id="advanced-examples">Advanced Examples</h2>
+<h3 id="api-testing-with-authentication">API Testing with Authentication</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> endpoints.txt | </span><span style="color:#bf616a;">reqs </span><span>\
+</span><span style="color:#bf616a;">  --headers </span><span>&quot;</span><span style="color:#a3be8c;">Authorization: Bearer YOUR_TOKEN</span><span>&quot; \
+</span><span style="color:#bf616a;">  --headers </span><span>&quot;</span><span style="color:#a3be8c;">Content-Type: application/json</span><span>&quot; \
+</span><span style="color:#bf616a;">  --format</span><span> jsonl
+</span></code></pre>
+<h3 id="rate-limited-scanning">Rate-Limited Scanning</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs </span><span>\
+</span><span style="color:#bf616a;">  --concurrency</span><span> 5 \
+</span><span style="color:#bf616a;">  --delay</span><span> 200 \
+</span><span style="color:#bf616a;">  --timeout</span><span> 10
+</span></code></pre>
+<h3 id="export-results-for-analysis">Export Results for Analysis</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs </span><span>\
+</span><span style="color:#bf616a;">  --format</span><span> jsonl \
+</span><span style="color:#bf616a;">  --filter-status</span><span> 200 \
+</span><span style="color:#bf616a;">  --output</span><span> results.jsonl
+</span></code></pre>
+<p>Then analyze with <code>jq</code>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Get average response time
+</span><span style="color:#bf616a;">cat</span><span> results.jsonl | </span><span style="color:#bf616a;">jq -s </span><span>&#39;</span><span style="color:#a3be8c;">map(.response_time_ms) | add / length</span><span>&#39;
+</span><span>
+</span><span style="color:#65737e;"># Get slowest endpoints
+</span><span style="color:#bf616a;">cat</span><span> results.jsonl | </span><span style="color:#bf616a;">jq -s </span><span>&#39;</span><span style="color:#a3be8c;">sort_by(.response_time_ms) | reverse | .[0:5]</span><span>&#39;
+</span><span>
+</span><span style="color:#65737e;"># Count by status code
+</span><span style="color:#bf616a;">cat</span><span> results.jsonl | </span><span style="color:#bf616a;">jq -s </span><span>&#39;</span><span style="color:#a3be8c;">group_by(.status_code) | map({status: .[0].status_code, count: length})</span><span>&#39;
+</span></code></pre>
+<h3 id="security-testing-workflow">Security Testing Workflow</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Test common endpoints
+</span><span style="color:#bf616a;">cat </span><span>&lt;&lt; </span><span style="color:#b48ead;">EOF </span><span>| </span><span style="color:#bf616a;">reqs --format</span><span> jsonl</span><span style="color:#bf616a;"> --output</span><span> api-test.jsonl
+</span><span style="color:#a3be8c;">https://api.example.com/v1/users
+</span><span style="color:#a3be8c;">https://api.example.com/v1/admin
+</span><span style="color:#a3be8c;">https://api.example.com/v1/health
+</span><span style="color:#a3be8c;">https://api.example.com/v1/metrics
+</span><span style="color:#b48ead;">EOF
+</span><span>
+</span><span style="color:#65737e;"># Check results
+</span><span style="color:#bf616a;">cat</span><span> api-test.jsonl | </span><span style="color:#bf616a;">jq </span><span>&#39;</span><span style="color:#a3be8c;">select(.status_code == 200)</span><span>&#39;
+</span></code></pre>
+<h3 id="multiple-post-requests">Multiple POST Requests</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat </span><span>&lt;&lt; </span><span style="color:#b48ead;">EOF </span><span>| </span><span style="color:#bf616a;">reqs --format</span><span> jsonl
+</span><span style="color:#a3be8c;">POST https://api.example.com/users {&quot;name&quot;:&quot;Alice&quot;,&quot;role&quot;:&quot;user&quot;}
+</span><span style="color:#a3be8c;">POST https://api.example.com/users {&quot;name&quot;:&quot;Bob&quot;,&quot;role&quot;:&quot;admin&quot;}
+</span><span style="color:#a3be8c;">POST https://api.example.com/users {&quot;name&quot;:&quot;Charlie&quot;,&quot;role&quot;:&quot;user&quot;}
+</span><span style="color:#b48ead;">EOF
+</span></code></pre>
+<h2 id="pipeline-integration">Pipeline Integration</h2>
+<h3 id="combine-with-other-tools">Combine with Other Tools</h3>
+<p>Using with <code>httpx</code>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Get URLs from httpx and test with reqs
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">example.com</span><span>&quot; | </span><span style="color:#bf616a;">httpx -silent </span><span>| </span><span style="color:#bf616a;">reqs
+</span></code></pre>
+<p>Using with <code>waybackurls</code>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Get historical URLs and test them
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">example.com</span><span>&quot; | </span><span style="color:#bf616a;">waybackurls </span><span>| </span><span style="color:#bf616a;">reqs --filter-status</span><span> 200
+</span></code></pre>
+<p>Using with <code>gau</code>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Get URLs from common crawl and test
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">example.com</span><span>&quot; | </span><span style="color:#bf616a;">gau </span><span>| </span><span style="color:#bf616a;">reqs --concurrency</span><span> 10
+</span></code></pre>
+<h3 id="extract-and-test">Extract and Test</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Extract URLs from a webpage and test them
+</span><span style="color:#bf616a;">curl -s</span><span> https://example.com | \
+</span><span>  </span><span style="color:#bf616a;">grep -oP </span><span>&#39;</span><span style="color:#a3be8c;">https?://[^&quot;]+</span><span>&#39; | \
+</span><span>  </span><span style="color:#bf616a;">sort -u </span><span>| \
+</span><span>  </span><span style="color:#bf616a;">reqs --filter-status</span><span> 200
+</span></code></pre>
+<h2 id="docker-examples">Docker Examples</h2>
+<h3 id="basic-usage">Basic Usage</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot; | </span><span style="color:#bf616a;">docker</span><span> run</span><span style="color:#bf616a;"> -i</span><span> ghcr.io/hahwul/reqs:latest
+</span></code></pre>
+<h3 id="with-volume-mount">With Volume Mount</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">docker</span><span> run</span><span style="color:#bf616a;"> -i -v </span><span>$(</span><span style="color:#bf616a;">pwd</span><span>):/data ghcr.io/hahwul/reqs:latest \
+</span><span style="color:#bf616a;">  --format</span><span> jsonl \
+</span><span style="color:#bf616a;">  --output</span><span> /data/results.jsonl \
+</span><span>  &lt; urls.txt
+</span></code></pre>
+<h3 id="mcp-mode">MCP Mode</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">docker</span><span> run</span><span style="color:#bf616a;"> -i</span><span> ghcr.io/hahwul/reqs:latest</span><span style="color:#bf616a;"> --mcp
+</span></code></pre>
+<h2 id="automation-examples">Automation Examples</h2>
+<h3 id="continuous-monitoring-script">Continuous Monitoring Script</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;">#!/bin/bash
+</span><span style="color:#65737e;"># monitor.sh - Monitor website health
+</span><span>
+</span><span style="color:#bf616a;">URLS</span><span>=&quot;</span><span style="color:#a3be8c;">urls.txt</span><span>&quot;
+</span><span style="color:#bf616a;">OUTPUT</span><span>=&quot;</span><span style="color:#a3be8c;">health-</span><span>$</span><span style="color:#a3be8c;">(</span><span style="color:#bf616a;">date</span><span style="color:#a3be8c;"> +</span><span>%</span><span style="color:#bf616a;">Y</span><span>%</span><span style="color:#bf616a;">m</span><span>%</span><span style="color:#bf616a;">d</span><span style="color:#a3be8c;">-</span><span>%</span><span style="color:#bf616a;">H</span><span>%</span><span style="color:#bf616a;">M</span><span>%</span><span style="color:#bf616a;">S</span><span style="color:#a3be8c;">).jsonl</span><span>&quot;
+</span><span>
+</span><span style="color:#bf616a;">cat </span><span>&quot;$</span><span style="color:#bf616a;">URLS</span><span>&quot; | </span><span style="color:#bf616a;">reqs </span><span>\
+</span><span style="color:#bf616a;">  --format</span><span> jsonl \
+</span><span style="color:#bf616a;">  --timeout</span><span> 10 \
+</span><span style="color:#bf616a;">  --retry</span><span> 2 \
+</span><span style="color:#bf616a;">  --output </span><span>&quot;$</span><span style="color:#bf616a;">OUTPUT</span><span>&quot;
+</span><span>
+</span><span style="color:#65737e;"># Alert on failures
+</span><span style="color:#bf616a;">cat </span><span>&quot;$</span><span style="color:#bf616a;">OUTPUT</span><span>&quot; | </span><span style="color:#bf616a;">jq -r </span><span>&#39;</span><span style="color:#a3be8c;">select(.status_code &gt;= 500) | .url</span><span>&#39; | </span><span style="color:#b48ead;">while </span><span style="color:#96b5b4;">read</span><span> url; </span><span style="color:#b48ead;">do
+</span><span>  </span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">ALERT: </span><span>$</span><span style="color:#bf616a;">url</span><span style="color:#a3be8c;"> is down!</span><span>&quot;
+</span><span style="color:#b48ead;">done
+</span></code></pre>
+<h3 id="compare-environments">Compare Environments</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;">#!/bin/bash
+</span><span style="color:#65737e;"># compare-envs.sh - Compare staging vs production
+</span><span>
+</span><span style="color:#bf616a;">cat</span><span> endpoints.txt | </span><span style="color:#bf616a;">sed </span><span>&#39;</span><span style="color:#a3be8c;">s|^|https://staging.example.com|</span><span>&#39; | \
+</span><span>  </span><span style="color:#bf616a;">reqs --format</span><span> jsonl</span><span style="color:#bf616a;"> --output</span><span> staging.jsonl
+</span><span>
+</span><span style="color:#bf616a;">cat</span><span> endpoints.txt | </span><span style="color:#bf616a;">sed </span><span>&#39;</span><span style="color:#a3be8c;">s|^|https://example.com|</span><span>&#39; | \
+</span><span>  </span><span style="color:#bf616a;">reqs --format</span><span> jsonl</span><span style="color:#bf616a;"> --output</span><span> production.jsonl
+</span><span>
+</span><span style="color:#65737e;"># Compare response times
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">Staging avg:</span><span>&quot; $(</span><span style="color:#bf616a;">cat</span><span> staging.jsonl | </span><span style="color:#bf616a;">jq -s </span><span>&#39;</span><span style="color:#a3be8c;">map(.response_time_ms) | add / length</span><span>&#39;)
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">Production avg:</span><span>&quot; $(</span><span style="color:#bf616a;">cat</span><span> production.jsonl | </span><span style="color:#bf616a;">jq -s </span><span>&#39;</span><span style="color:#a3be8c;">map(.response_time_ms) | add / length</span><span>&#39;)
+</span></code></pre>
+<h2 id="troubleshooting-examples">Troubleshooting Examples</h2>
+<h3 id="debug-mode">Debug Mode</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Use verbose output formats to see what&#39;s happening
+</span><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs --format</span><span> jsonl | </span><span style="color:#bf616a;">jq</span><span> .
+</span></code></pre>
+<h3 id="test-connectivity">Test Connectivity</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Test if you can reach the hosts
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot; | </span><span style="color:#bf616a;">reqs --timeout</span><span> 30
+</span></code></pre>
+<h3 id="test-with-proxy">Test with Proxy</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Route through a proxy
+</span><span style="color:#bf616a;">cat</span><span> urls.txt | </span><span style="color:#bf616a;">reqs --proxy</span><span> http://localhost:8080
+</span></code></pre>
+<h3 id="test-http-vs-https">Test HTTP vs HTTPS</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cat </span><span>&lt;&lt; </span><span style="color:#b48ead;">EOF </span><span>| </span><span style="color:#bf616a;">reqs
+</span><span style="color:#a3be8c;">http://example.com
+</span><span style="color:#a3be8c;">https://example.com
+</span><span style="color:#b48ead;">EOF
+</span></code></pre>
+<h2 id="performance-benchmarking">Performance Benchmarking</h2>
+<h3 id="compare-response-times">Compare Response Times</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Test the same URL multiple times
+</span><span style="color:#b48ead;">for</span><span> i </span><span style="color:#b48ead;">in </span><span>{1..10}; </span><span style="color:#b48ead;">do
+</span><span>  </span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot;
+</span><span style="color:#b48ead;">done </span><span>| </span><span style="color:#bf616a;">reqs --format</span><span> jsonl | \
+</span><span>  </span><span style="color:#bf616a;">jq -s </span><span>&#39;</span><span style="color:#a3be8c;">map(.response_time_ms) | {min: min, max: max, avg: (add/length)}</span><span>&#39;
+</span></code></pre>
+<h3 id="concurrent-load-testing">Concurrent Load Testing</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Generate multiple concurrent requests
+</span><span style="color:#b48ead;">for</span><span> i </span><span style="color:#b48ead;">in </span><span>{1..100}; </span><span style="color:#b48ead;">do
+</span><span>  </span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">https://example.com</span><span>&quot;
+</span><span style="color:#b48ead;">done </span><span>| </span><span style="color:#bf616a;">reqs --concurrency</span><span> 50</span><span style="color:#bf616a;"> --format</span><span> jsonl
+</span></code></pre>
+<h2 id="tips-and-best-practices">Tips and Best Practices</h2>
+<ol>
+<li><strong>Use appropriate concurrency</strong>: Start with low values (5-10) and increase based on your needs</li>
+<li><strong>Set reasonable timeouts</strong>: Default is usually good, but adjust for slow services</li>
+<li><strong>Save output to files</strong>: Makes it easier to analyze results later</li>
+<li><strong>Use JSONL for structured data</strong>: Easier to process with tools like <code>jq</code></li>
+<li><strong>Respect rate limits</strong>: Use <code>--delay</code> to avoid overwhelming servers</li>
+<li><strong>Filter early</strong>: Use status code filters to reduce noise</li>
+<li><strong>Combine with other tools</strong>: Reqs works great in Unix pipelines</li>
+</ol>
+
+
+    
+    
+
+    
+
+
+                        
+
+
+
+                        <nav class="mt-12 pt-8 border-t border-gray-500/15">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="prev-nav-item">
+                                    
+    
+        
+        <a class="nav-button nav-button-prev group" href="https://reqs.hahwul.com/get_started/">
+            <div class="nav-button-content">
+                <div class="nav-button-direction">
+                    <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                    <span class="nav-button-label">Back to</span>
+                </div>
+                <div class="nav-button-title">Get Started</div>
+            </div>
+        </a>
+    
+
+                                </div>
+                                <div class="next-nav-item">
+                                    
+    
+        
+        
+        
+            
+            
+            
+                
+            
+                
+            
+                
+                    
+                
+            
+        
+            
+            
+                <a class="nav-button nav-button-next group" href="https://reqs.hahwul.com/mcp_mode/">
+                    <div class="nav-button-content">
+                        <div class="nav-button-direction">
+                            <span class="nav-button-label">Next</span>
+                            <svg class="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                            </svg>
+                        </div>
+                        <div class="nav-button-title">MCP Mode</div>
+                    </div>
+                </a>
+                
+            
+            
+                
+            
+                
+            
+        
+    
+
+                                </div>
+                            </div>
+                        </nav>
+                    </main>
+
+                    
+                        
+
+<div class="hidden lg:block" >
+    <div class="sticky top-20 px-4 py-2 border-l border-gray-500/15">
+        <h4 class="text-lg font-bold mb-1">ON THIS PAGE</h4>
+            <ul class="menu menu-sm toc-menu">
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#basic-examples" class="toc-link">Basic Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#test-a-single-url" class="toc-link">Test a Single URL</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#test-multiple-urls" class="toc-link">Test Multiple URLs</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#test-urls-from-a-file" class="toc-link">Test URLs from a File</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#output-format-examples" class="toc-link">Output Format Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#plain-text-output" class="toc-link">Plain Text Output</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#json-lines-output" class="toc-link">JSON Lines Output</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#csv-output" class="toc-link">CSV Output</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#http-method-examples" class="toc-link">HTTP Method Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#get-request" class="toc-link">GET Request</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#post-request" class="toc-link">POST Request</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#put-request" class="toc-link">PUT Request</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#delete-request" class="toc-link">DELETE Request</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#filtering-examples" class="toc-link">Filtering Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#filter-by-status-code" class="toc-link">Filter by Status Code</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#filter-by-response-content" class="toc-link">Filter by Response Content</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#filter-with-regex" class="toc-link">Filter with Regex</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#advanced-examples" class="toc-link">Advanced Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#api-testing-with-authentication" class="toc-link">API Testing with Authentication</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#rate-limited-scanning" class="toc-link">Rate-Limited Scanning</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#export-results-for-analysis" class="toc-link">Export Results for Analysis</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#security-testing-workflow" class="toc-link">Security Testing Workflow</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#multiple-post-requests" class="toc-link">Multiple POST Requests</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#pipeline-integration" class="toc-link">Pipeline Integration</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#combine-with-other-tools" class="toc-link">Combine with Other Tools</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#extract-and-test" class="toc-link">Extract and Test</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#docker-examples" class="toc-link">Docker Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#basic-usage" class="toc-link">Basic Usage</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#with-volume-mount" class="toc-link">With Volume Mount</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#mcp-mode" class="toc-link">MCP Mode</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#automation-examples" class="toc-link">Automation Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#continuous-monitoring-script" class="toc-link">Continuous Monitoring Script</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#compare-environments" class="toc-link">Compare Environments</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#troubleshooting-examples" class="toc-link">Troubleshooting Examples</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#debug-mode" class="toc-link">Debug Mode</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#test-connectivity" class="toc-link">Test Connectivity</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#test-with-proxy" class="toc-link">Test with Proxy</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#test-http-vs-https" class="toc-link">Test HTTP vs HTTPS</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <details class="toc-details" >
+                        <summary>
+                            <a href="https://reqs.hahwul.com/get_started/examples/#performance-benchmarking" class="toc-link">Performance Benchmarking</a>
+                        </summary>
+                        <ul>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#compare-response-times" class="toc-link">Compare Response Times</a>
+                                </li>
+                            
+                                <li>
+                                    <a href="https://reqs.hahwul.com/get_started/examples/#concurrent-load-testing" class="toc-link">Concurrent Load Testing</a>
+                                </li>
+                            
+                        </ul>
+                    </details>
+                    
+                </li>
+            
+                <li>
+                    
+                    <a href="https://reqs.hahwul.com/get_started/examples/#tips-and-best-practices" class="toc-link">Tips and Best Practices</a>
+                    
+                </li>
+            
+            </ul>
+    </div>
+</div>
+
+
+                    
+                    
+                </div>
+            </div>
+            
+
+            <script>
+              // Determine theme: localStorage > extra.default_colorset > goyo-dark
+              // Expose theme config for global use (e.g., goyo.js)
+              
+              
+              
+                  
+                  
+                  
+                  
+              
+              window.defaultColorset = "dark";
+              window.darkBrightness = "normal";
+              window.lightBrightness = "normal";
+              window.themeMap = { "dark": "goyo-dark", "light": "goyo-light" };
+              window.fallbackTheme = window.themeMap[window.defaultColorset] || "goyo-dark";
+
+              // Theme mapping - maps user-friendly names to actual DaisyUI theme names
+              var themeMapping = { "goyo-dark": "night", "goyo-light": "lofi" };
+              var currentUserTheme = localStorage.getItem('theme') || window.fallbackTheme;
+              var actualTheme = themeMapping[currentUserTheme] || currentUserTheme;
+
+              // Initialize and run Mermaid only when loaded
+              window.initMermaid = function() {
+                var mermaidTheme = "dark";
+                if(currentUserTheme == "goyo-light") {
+                  mermaidTheme = "light";
+                }
+
+                if (typeof mermaid !== 'undefined') {
+                  mermaid.initialize({ startOnLoad: false, theme: mermaidTheme });
+
+                  // Function to render mermaid diagrams
+                  var renderMermaid = async function() {
+                    const mermaidElements = document.querySelectorAll('.mermaid');
+                    if (mermaidElements.length > 0) {
+                        await mermaid.run({
+                            nodes: mermaidElements
+                        });
+                    }
+                  };
+
+                  // Check if DOMContentLoaded has already fired
+                  if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', renderMermaid);
+                  } else {
+                    // DOMContentLoaded already fired, run immediately
+                    renderMermaid();
+                  }
+                }
+              };
+
+              // Auto-initialize if Mermaid is already loaded
+              if (typeof mermaid !== 'undefined') {
+                window.initMermaid();
+              }
+            </script>
+
+        </div>
+
+        
+        
+        
+        <div id="sidebar" class="drawer-side pt-16 border-r border-gray-500/15 overflow-hidden">
+        
+            
+                
+
+
+
+    
+
+
+
+    
+
+<label for="my-drawer-2" class="drawer-overlay"></label>
+<div class="mt-4 w-68 h-[calc(100vh-4rem)] bg-base-100 text-base-content flex flex-col overflow-auto thin-scrollbar">
+    
+    <div class="px-2 pt-4 pb-0 flex flex-col items-center gap-2">
+        <div class="w-full flex items-center gap-2">
+            <label for="search-modal" class="input w-full flex items-center justify-between text-left bg-base-100 cursor-pointer border-gray-500/15 hover:border-gray-500/55 hover:border-1 transition" aria-label="검색">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <span class="text-gray-400"><kbd class="kbd">⌘</kbd><kbd class="kbd">K</kbd></span>
+            </label>
+        </div>
+    </div>
+    
+    <ul class="menu w-full flex-grow">
+        
+        
+        
+        
+            
+            <li>
+                
+                    <details open>
+                        <summary ><a class="hover:no-underline" href="https://reqs.hahwul.com/get_started">Get Started</a></summary>
+                        <ul>
+                            
+                            
+                                <li ><a class="hover:no-underline" href="https://reqs.hahwul.com/get_started/installation">Installation</a></li>
+                            
+                                <li ><a class="hover:no-underline" href="https://reqs.hahwul.com/get_started/usage">Basic Usage</a></li>
+                            
+                                <li class="rounded bg-gray-500/15"><a class="hover:no-underline" href="https://reqs.hahwul.com/get_started/examples">Examples</a></li>
+                            
+                            
+                        </ul>
+                    </details>
+                
+            </li>
+        
+            
+            <li>
+                
+                    <details >
+                        <summary ><a class="hover:no-underline" href="https://reqs.hahwul.com/mcp_mode">MCP Mode</a></summary>
+                        <ul>
+                            
+                            
+                                <li ><a class="hover:no-underline" href="https://reqs.hahwul.com/mcp_mode/overview">MCP Server Overview</a></li>
+                            
+                                <li ><a class="hover:no-underline" href="https://reqs.hahwul.com/mcp_mode/integration">Integration with AI Tools</a></li>
+                            
+                            
+                        </ul>
+                    </details>
+                
+            </li>
+        
+    </ul>
+
+    
+<footer class="footer py-2 px-4 mt-2 border-t border-gray-500/50">
+    <div class="w-full">
+        <!-- Main footer content -->
+        <div class="flex flex-col items-center gap-4 mb-4">
+            <!-- Powered by section with better styling -->
+            <div class="text-center">
+                <p class="text-sm text-base-content/60 leading-relaxed">
+                    <div style='display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap;'><a href='https://www.hahwul.com' target='_blank' rel='noopener noreferrer' style='display: inline-flex; align-items: center;'><img src='https://www.hahwul.com/images/logo-gray.png' alt='HAHWUL' style='height: 30px' /></a><span style='opacity: 0.6;'>•</span><span>Powered by <a href='https://www.getzola.org' class='font-medium text-base-content/70 hover:text-base-content transition-colors duration-200'>Zola</a> and <a href='https://github.com/hahwul/goyo' class='font-medium text-base-content/70 hover:text-base-content transition-colors duration-200'>Goyo</a></span></div>
+                </p>
+            </div>
+        </div>
+
+
+    </div>
+</footer>
+
+</div>
+
+            
+        </div>
+    </div>
+
+    
+        <script type="text/javascript" src="https://reqs.hahwul.com/goyo.js"></script>
+        
+        <!-- Lazy load search functionality -->
+        <script>
+            var searchLoaded = false;
+            var searchLoadCallbacks = [];
+
+            function loadSearchLibraries(callback) {
+                // If already loaded, execute callback immediately
+                if (searchLoaded && typeof Fuse !== 'undefined' && window.searchIndex) {
+                    if (callback) callback();
+                    return;
+                }
+
+                // Add callback to queue
+                if (callback) searchLoadCallbacks.push(callback);
+
+                // If already loading, don't start again
+                if (searchLoaded) return;
+                searchLoaded = true;
+
+                // Show loading indicator in search input
+                var searchInput = document.getElementById('search');
+                if (searchInput) {
+                    searchInput.placeholder = 'Loading search...';
+                    searchInput.disabled = true;
+                }
+
+                // Load Fuse.js
+                var fuseScript = document.createElement('script');
+                fuseScript.src = 'https://reqs.hahwul.com/fuse.min.js';
+
+                // Load search index after Fuse.js
+                fuseScript.onload = function() {
+                    var searchIndexScript = document.createElement('script');
+                    searchIndexScript.src = 'https://reqs.hahwul.com/search_index.en.js';
+                    searchIndexScript.onload = function() {
+                        // Re-enable search input
+                        if (searchInput) {
+                            searchInput.placeholder = 'Search documentation...';
+                            searchInput.disabled = false;
+                            searchInput.focus();
+                        }
+
+                        // Initialize search functionality
+                        if (typeof initSearch === 'function') {
+                            initSearch();
+                        }
+
+                        // Execute all queued callbacks
+                        searchLoadCallbacks.forEach(function(cb) { cb(); });
+                        searchLoadCallbacks = [];
+                    };
+                    document.body.appendChild(searchIndexScript);
+                };
+
+                document.body.appendChild(fuseScript);
+            }
+
+            // Load search on first interaction with search modal
+            document.addEventListener('DOMContentLoaded', function() {
+                var searchModal = document.getElementById('search-modal');
+                if (searchModal) {
+                    searchModal.addEventListener('change', function() {
+                        if (this.checked) {
+                            loadSearchLibraries();
+                        }
+                    });
+                }
+
+                // Also load on Ctrl+K / Cmd+K
+                document.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                        loadSearchLibraries();
+                    }
+                });
+            });
+        </script>
+        
+    
+</body>
+</html>

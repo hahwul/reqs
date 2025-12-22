@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>https://reqs.hahwul.com/</loc>
+    </url>
+    <url>
+        <loc>https://reqs.hahwul.com/get_started/</loc>
+    </url>
+    <url>
+        <loc>https://reqs.hahwul.com/get_started/examples/</loc>
+    </url>
+    <url>
+        <loc>https://reqs.hahwul.com/get_started/installation/</loc>
+    </url>
+    <url>
+        <loc>https://reqs.hahwul.com/get_started/usage/</loc>
+    </url>
+    <url>
+        <loc>https://reqs.hahwul.com/mcp_mode/</loc>
+    </url>
+    <url>
+        <loc>https://reqs.hahwul.com/mcp_mode/integration/</loc>
+    </url>
+    <url>
+        <loc>https://reqs.hahwul.com/mcp_mode/overview/</loc>
+    </url>
+</urlset>
