@@ -304,9 +304,7 @@ async fn process_requests(
         let raw_request = if params.include_req {
             request_builder
                 .try_clone()
-                .unwrap()
-                .build()
-                .ok()
+                .and_then(|builder| builder.build().ok())
                 .map(|req| format_raw_request(&req, params.http2, None))
         } else {
             None
