@@ -14,25 +14,21 @@ pub fn should_filter_response(
     }
 
     // Filter by string in response body
-    if let Some(filter_str) = filter_string {
-        if let Some(body_text) = body {
-            if !body_text.contains(filter_str) {
-                return true;
-            }
-        } else {
+    if let (Some(filter_str), Some(body_text)) = (filter_string, body) {
+        if !body_text.contains(filter_str) {
             return true;
         }
+    } else if filter_string.is_some() {
+        return true;
     }
 
     // Filter by regex in response body
-    if let Some(re) = filter_regex {
-        if let Some(body_text) = body {
-            if !re.is_match(body_text) {
-                return true;
-            }
-        } else {
+    if let (Some(re), Some(body_text)) = (filter_regex, body) {
+        if !re.is_match(body_text) {
             return true;
         }
+    } else if filter_regex.is_some() {
+        return true;
     }
 
     false
