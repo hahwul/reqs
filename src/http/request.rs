@@ -123,4 +123,102 @@ mod tests {
         assert_eq!(url, "");
         assert_eq!(body, None);
     }
+
+    #[test]
+    fn test_build_request_get() {
+        let client = Client::new();
+        let builder = build_request(&client, "GET", "https://example.com", &None);
+        let req = builder.build().unwrap();
+
+        assert_eq!(req.method(), reqwest::Method::GET);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+        assert!(req.body().is_none());
+    }
+
+    #[test]
+    fn test_build_request_post_with_body() {
+        let client = Client::new();
+        let body = Some("test body".to_string());
+        let builder = build_request(&client, "POST", "https://example.com", &body);
+        let req = builder.build().unwrap();
+
+        assert_eq!(req.method(), reqwest::Method::POST);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+
+        let req_body = req.body().unwrap().as_bytes().unwrap();
+        assert_eq!(req_body, b"test body");
+    }
+
+    #[test]
+    fn test_build_request_put() {
+        let client = Client::new();
+        let body = Some("put body".to_string());
+        let builder = build_request(&client, "PUT", "https://example.com", &body);
+        let req = builder.build().unwrap();
+
+        assert_eq!(req.method(), reqwest::Method::PUT);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+
+        let req_body = req.body().unwrap().as_bytes().unwrap();
+        assert_eq!(req_body, b"put body");
+    }
+
+    #[test]
+    fn test_build_request_delete() {
+        let client = Client::new();
+        let builder = build_request(&client, "DELETE", "https://example.com", &None);
+        let req = builder.build().unwrap();
+
+        assert_eq!(req.method(), reqwest::Method::DELETE);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+        assert!(req.body().is_none());
+    }
+
+    #[test]
+    fn test_build_request_head() {
+        let client = Client::new();
+        let builder = build_request(&client, "HEAD", "https://example.com", &None);
+        let req = builder.build().unwrap();
+
+        assert_eq!(req.method(), reqwest::Method::HEAD);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+        assert!(req.body().is_none());
+    }
+
+    #[test]
+    fn test_build_request_patch() {
+        let client = Client::new();
+        let body = Some("patch body".to_string());
+        let builder = build_request(&client, "PATCH", "https://example.com", &body);
+        let req = builder.build().unwrap();
+
+        assert_eq!(req.method(), reqwest::Method::PATCH);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+
+        let req_body = req.body().unwrap().as_bytes().unwrap();
+        assert_eq!(req_body, b"patch body");
+    }
+
+    #[test]
+    fn test_build_request_options() {
+        let client = Client::new();
+        let builder = build_request(&client, "OPTIONS", "https://example.com", &None);
+        let req = builder.build().unwrap();
+
+        assert_eq!(req.method(), reqwest::Method::OPTIONS);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+        assert!(req.body().is_none());
+    }
+
+    #[test]
+    fn test_build_request_default_to_get() {
+        let client = Client::new();
+        let builder = build_request(&client, "UNKNOWN", "https://example.com", &None);
+        let req = builder.build().unwrap();
+
+        // The default branch in build_request is _ => client.get(url)
+        assert_eq!(req.method(), reqwest::Method::GET);
+        assert_eq!(req.url().as_str(), "https://example.com/");
+        assert!(req.body().is_none());
+    }
 }
