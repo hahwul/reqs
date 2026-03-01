@@ -47,7 +47,10 @@ mod tests {
     fn test_build_http_client_default() {
         let cli = Cli::parse_from(&["reqs"]);
         let client = build_http_client(&cli);
-        assert!(client.is_ok(), "Should build a client with default settings");
+        assert!(
+            client.is_ok(),
+            "Should build a client with default settings"
+        );
     }
 
     #[test]
@@ -68,14 +71,20 @@ mod tests {
     fn test_build_http_client_with_invalid_proxy() {
         let cli = Cli::parse_from(&["reqs", "--proxy", "htt\0p://127.0.0.1:8080"]);
         let client = build_http_client(&cli);
-        assert!(client.is_err(), "Should fail to build a client with an invalid proxy");
+        assert!(
+            client.is_err(),
+            "Should fail to build a client with an invalid proxy"
+        );
     }
 
     #[test]
     fn test_build_http_client_ssl_verification() {
         let cli = Cli::parse_from(&["reqs", "--verify-ssl"]);
         let client = build_http_client(&cli);
-        assert!(client.is_ok(), "Should build a client with SSL verification enabled");
+        assert!(
+            client.is_ok(),
+            "Should build a client with SSL verification enabled"
+        );
     }
 
     #[test]

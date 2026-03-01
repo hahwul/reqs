@@ -1,12 +1,14 @@
 use scraper::{Html, Selector};
+use std::sync::LazyLock;
 
 use crate::constants::TITLE_SELECTOR;
+
+static TITLE_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(TITLE_SELECTOR).unwrap());
 
 /// Extract title from HTML content
 pub fn extract_title(html: &str) -> Option<String> {
     let document = Html::parse_document(html);
-    let selector = Selector::parse(TITLE_SELECTOR).ok()?;
-    document.select(&selector).next().map(|t| t.inner_html())
+    document.select(&TITLE_SEL).next().map(|t| t.inner_html())
 }
 
 #[cfg(test)]
