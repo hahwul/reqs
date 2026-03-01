@@ -80,6 +80,41 @@ mod tests {
     }
 
     #[test]
+    fn test_filter_by_regex() {
+        let body = Some("test content".to_string());
+        let filter_regex = Some(Regex::new(r"content$").unwrap());
+
+        // Regex matches the body, so it shouldn't filter
+        assert!(!should_filter_response(
+            200,
+            &body,
+            &[],
+            &None,
+            &filter_regex
+        ));
+
+        let filter_regex = Some(Regex::new(r"^missing").unwrap());
+
+        // Regex does not match the body, so it should filter
+        assert!(should_filter_response(
+            200,
+            &body,
+            &[],
+            &None,
+            &filter_regex
+        ));
+
+        // Regex provided but no body, so it should filter
+        assert!(should_filter_response(
+            200,
+            &None,
+            &[],
+            &None,
+            &filter_regex
+        ));
+    }
+
+    #[test]
     fn test_no_filter() {
         assert!(!should_filter_response(200, &None, &[], &None, &None));
     }
