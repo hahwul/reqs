@@ -303,15 +303,15 @@ fn format_response_output(cli: &Cli, data: &ResponseData) -> String {
                 "response_time_ms": data.elapsed.as_millis(),
             });
             if let Some(t) = data.title {
-                json_output["title"] = t.clone().into();
+                json_output["title"] = t.as_str().into();
             }
             if let Some(req) = data.req_for_display {
-                json_output["raw_request"] = req.clone().into();
+                json_output["raw_request"] = req.as_str().into();
             }
             if cli.include_res
                 && let Some(body) = data.body_text
             {
-                json_output["response_body"] = body.clone().into();
+                json_output["response_body"] = body.as_str().into();
             }
             serde_json::to_string(&json_output).unwrap_or_default() + "\n"
         }
