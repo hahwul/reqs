@@ -13,8 +13,8 @@ use rust_mcp_sdk::{McpServer, StdioTransport, TransportOptions};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 use crate::constants::DEFAULT_REDIRECT_LIMIT;
 use crate::filter::should_filter_response;
@@ -133,7 +133,8 @@ impl ServerHandler for ReqsServerHandler {
         let client = match client {
             Some(c) => c,
             None => {
-                let new_client = build_mcp_client_base(&self.cli, params.follow_redirect, params.http2)?;
+                let new_client =
+                    build_mcp_client_base(&self.cli, params.follow_redirect, params.http2)?;
                 let mut cache = self.client_cache.write().await;
                 cache.insert(cache_key, new_client.clone());
                 new_client
