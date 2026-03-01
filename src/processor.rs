@@ -133,9 +133,7 @@ async fn process_single_request(
         let req_for_display = if cli.include_req {
             request_builder
                 .try_clone()
-                .unwrap()
-                .build()
-                .ok()
+                .and_then(|builder| builder.build().ok())
                 .map(|req| format_raw_request(&req, cli.http2, Some(&cli.headers)))
         } else {
             None
