@@ -20,3 +20,10 @@ regex = "1"
 rust-mcp-sdk = "0.7"
 async-trait = "0.1"
 scraper = "0.19.0"
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "client_benchmark"
+harness = false

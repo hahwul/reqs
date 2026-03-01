@@ -11,7 +11,9 @@ use rust_mcp_sdk::schema::{
 };
 use rust_mcp_sdk::{McpServer, StdioTransport, TransportOptions};
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use crate::constants::DEFAULT_REDIRECT_LIMIT;
@@ -43,7 +45,10 @@ pub async fn run_mcp_server(cli: Cli) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to create stdio transport: {}", e))?;
 
     // Create handler
-    let handler = ReqsServerHandler { cli: cli.clone() };
+    let handler = ReqsServerHandler {
+        cli: cli.clone(),
+        client_cache: RwLock::new(HashMap::new()),
+    };
 
     // Create and start server
     let server: Arc<ServerRuntime> =
@@ -59,6 +64,7 @@ pub async fn run_mcp_server(cli: Cli) -> Result<()> {
 /// Custom handler for the MCP server
 struct ReqsServerHandler {
     cli: Cli,
+    client_cache: RwLock<HashMap<(bool, bool), Client>>,
 }
 
 #[async_trait]
@@ -116,8 +122,23 @@ impl ServerHandler for ReqsServerHandler {
         // Extract parameters
         let params = extract_tool_parameters(args, &self.cli)?;
 
-        // Create HTTP client
-        let client = build_mcp_client(&self.cli, &params)?;
+        // Create or get HTTP client
+        let cache_key = (params.follow_redirect, params.http2);
+
+        let client = {
+            let cache = self.client_cache.read().await;
+            cache.get(&cache_key).cloned()
+        };
+
+        let client = match client {
+            Some(c) => c,
+            None => {
+                let new_client = build_mcp_client_base(&self.cli, params.follow_redirect, params.http2)?;
+                let mut cache = self.client_cache.write().await;
+                cache.insert(cache_key, new_client.clone());
+                new_client
+            }
+        };
 
         // Process requests
         let results = process_requests(requests, &client, &params).await;
@@ -228,20 +249,20 @@ fn extract_tool_parameters(
     })
 }
 
-/// Build HTTP client for MCP requests
-fn build_mcp_client(
+/// Build base HTTP client for MCP requests
+fn build_mcp_client_base(
     cli: &Cli,
-    params: &ToolParameters,
+    follow_redirect: bool,
+    http2: bool,
 ) -> std::result::Result<Client, CallToolError> {
-    let redirect_policy = if params.follow_redirect {
+    let redirect_policy = if follow_redirect {
         Policy::limited(DEFAULT_REDIRECT_LIMIT)
     } else {
         Policy::none()
     };
 
-    // First, apply headers from CLI (global default), then custom headers from tool call (overrides)
-    let mut default_headers = parse_headers(&cli.headers);
-    default_headers.extend(parse_headers(&params.custom_headers));
+    // Apply headers from CLI (global default)
+    let default_headers = parse_headers(&cli.headers);
 
     let mut client_builder = Client::builder()
         .timeout(Duration::from_secs(cli.timeout))
@@ -261,7 +282,7 @@ fn build_mcp_client(
         client_builder = client_builder.proxy(proxy);
     }
 
-    if !params.http2 {
+    if !http2 {
         client_builder = client_builder.http1_only();
     }
 
@@ -298,14 +319,20 @@ async fn process_requests(
 
         let url_str = normalize_url_scheme(&url_str);
 
-        let request_builder = build_request(client, &method, &url_str, &body);
+        let mut request_builder = build_request(client, &method, &url_str, &body);
+
+        // Apply custom headers from parameters
+        if !params.custom_headers.is_empty() {
+            let custom_headers_map = parse_headers(&params.custom_headers);
+            request_builder = request_builder.headers(custom_headers_map);
+        }
 
         // Capture raw request if needed
         let raw_request = if params.include_req {
             request_builder
                 .try_clone()
                 .and_then(|builder| builder.build().ok())
-                .map(|req| format_raw_request(&req, params.http2, None))
+                .map(|req| format_raw_request(&req, params.http2, Some(&params.custom_headers)))
         } else {
             None
         };
