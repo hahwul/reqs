@@ -201,16 +201,14 @@ async fn process_single_request(
                 return; // Success, exit retry loop
             }
             Err(err) => {
-                last_error = Some(err);
                 attempts += 1;
                 if attempts <= cli.retry {
                     eprintln!(
                         "[{}] - Attempt {} failed: {}. Retrying...",
-                        url_str,
-                        attempts,
-                        last_error.as_ref().unwrap()
+                        url_str, attempts, err
                     );
                 }
+                last_error = Some(err);
             }
         }
     }
