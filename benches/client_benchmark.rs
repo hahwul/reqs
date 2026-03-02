@@ -1,5 +1,6 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use reqwest::Client;
+use std::hint::black_box;
 
 fn build_client_benchmark(c: &mut Criterion) {
     c.bench_function("build_client", |b| {
@@ -15,7 +16,7 @@ fn reuse_client_benchmark(c: &mut Criterion) {
     c.bench_function("reuse_client", |b| {
         b.iter(|| {
             let builder = client.get("http://example.com");
-            black_box(builder);
+            let _ = black_box(builder);
         })
     });
 }

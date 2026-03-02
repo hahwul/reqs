@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn test_build_http_client_default() {
-        let cli = Cli::parse_from(&["reqs"]);
+        let cli = Cli::parse_from(["reqs"]);
         let client = build_http_client(&cli);
         assert!(
             client.is_ok(),
@@ -55,21 +55,21 @@ mod tests {
 
     #[test]
     fn test_build_http_client_with_custom_headers() {
-        let cli = Cli::parse_from(&["reqs", "-H", "User-Agent: test-agent"]);
+        let cli = Cli::parse_from(["reqs", "-H", "User-Agent: test-agent"]);
         let client = build_http_client(&cli);
         assert!(client.is_ok(), "Should build a client with custom headers");
     }
 
     #[test]
     fn test_build_http_client_with_proxy() {
-        let cli = Cli::parse_from(&["reqs", "--proxy", "http://127.0.0.1:8080"]);
+        let cli = Cli::parse_from(["reqs", "--proxy", "http://127.0.0.1:8080"]);
         let client = build_http_client(&cli);
         assert!(client.is_ok(), "Should build a client with a proxy");
     }
 
     #[test]
     fn test_build_http_client_with_invalid_proxy() {
-        let cli = Cli::parse_from(&["reqs", "--proxy", "htt\0p://127.0.0.1:8080"]);
+        let cli = Cli::parse_from(["reqs", "--proxy", "htt\0p://127.0.0.1:8080"]);
         let client = build_http_client(&cli);
         assert!(
             client.is_err(),
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_build_http_client_ssl_verification() {
-        let cli = Cli::parse_from(&["reqs", "--verify-ssl"]);
+        let cli = Cli::parse_from(["reqs", "--verify-ssl"]);
         let client = build_http_client(&cli);
         assert!(
             client.is_ok(),
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_build_http_client_http2() {
-        let cli = Cli::parse_from(&["reqs", "--http2"]);
+        let cli = Cli::parse_from(["reqs", "--http2"]);
         let client = build_http_client(&cli);
         assert!(client.is_ok(), "Should build a client with HTTP2 enabled");
     }
