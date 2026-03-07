@@ -19,7 +19,7 @@ jobs:
           submodules: true
 
       - name: Build and deploy
-        uses: shalzz/zola-deploy-action@v0.21.0
+        uses: shalzz/zola-deploy-action@v0.22.1
         env:
           BUILD_DIR: docs
           GITHUB_TOKEN: ${{ secrets.REQS_PUBLISH_TOKEN }}
